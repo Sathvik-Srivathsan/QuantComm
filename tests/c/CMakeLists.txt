@@ -56,3 +56,10 @@ target_include_directories(test_ratchet PRIVATE
     ${CMAKE_SOURCE_DIR}/crypto)
 target_link_libraries(test_ratchet PRIVATE unity)
 add_test(NAME c_ratchet COMMAND test_ratchet)
+
+add_executable(test_codec test_codec.c
+    ${CMAKE_SOURCE_DIR}/core/qc_codec.c)
+target_include_directories(test_codec PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_codec PRIVATE unity)
+add_test(NAME c_codec COMMAND test_codec)
