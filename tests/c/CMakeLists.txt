@@ -45,3 +45,14 @@ target_include_directories(test_kdf PRIVATE
     ${CMAKE_SOURCE_DIR}/crypto)
 target_link_libraries(test_kdf PRIVATE unity)
 add_test(NAME c_kdf COMMAND test_kdf)
+
+add_executable(test_ratchet test_ratchet.c
+    ${CMAKE_SOURCE_DIR}/core/qc_ratchet.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c)
+target_include_directories(test_ratchet PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_ratchet PRIVATE unity)
+add_test(NAME c_ratchet COMMAND test_ratchet)
