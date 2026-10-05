@@ -1,2 +1,5 @@
 .cptr/
 .opencode/
+build/
+__pycache__/
+.pytest_cache/
