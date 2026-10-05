@@ -30,6 +30,10 @@ int qc_hkdf_expand(const uint8_t prk[32],
     size_t done = 0;
     uint8_t ctr = 1;
 
+    if (prk == NULL) {
+        return -1;
+    }
+
     if (okm_len > 255 * 32) {
         return -1;
     }

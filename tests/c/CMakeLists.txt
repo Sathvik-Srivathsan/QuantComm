@@ -34,3 +34,14 @@ target_include_directories(test_hkdf PRIVATE
     ${CMAKE_SOURCE_DIR}/crypto)
 target_link_libraries(test_hkdf PRIVATE unity)
 add_test(NAME c_hkdf COMMAND test_hkdf)
+
+add_executable(test_kdf test_kdf.c
+    ${CMAKE_SOURCE_DIR}/core/qc_kdf.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c)
+target_include_directories(test_kdf PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_kdf PRIVATE unity)
+add_test(NAME c_kdf COMMAND test_kdf)

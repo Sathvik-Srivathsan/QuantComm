@@ -27,7 +27,13 @@ static const uint32_t K[64] = {
     0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u,
 };
 
-static uint32_t rotr(uint32_t x, unsigned n) { return (x >> n) | (x << (32 - n)); }
+static uint32_t rotr(uint32_t x, unsigned n) {
+    /* All call sites use n in {2,6,7,11,13,17,18,19,22,25}; n=0 would be UB. */
+    if (n == 0 || n >= 32) {
+        return 0; /* defensive: unreachable via checked call sites (see A2) */
+    }
+    return (x >> n) | (x << (32 - n));
+}
 
 static void compress(uint32_t h[8], const uint8_t block[64]) {
     uint32_t w[64];
