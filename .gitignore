@@ -3,3 +3,40 @@
 build/
 __pycache__/
 .pytest_cache/
+# C/C++ build outputs
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.out
+*.elf
+*.bin
+*.map
+*.hex
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+# OS
+Thumbs.db
+.DS_Store
+# ESP-IDF / embedded
+sdkconfig
+sdkconfig.old
+# Secrets (never commit keys)
+.env
+*.pem
+*.key
+# Coverage/profiling
+*.gcda
+*.gcno
+coverage/
