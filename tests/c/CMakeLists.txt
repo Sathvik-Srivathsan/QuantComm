@@ -90,3 +90,18 @@ target_include_directories(test_fuzz PRIVATE
 target_link_libraries(test_fuzz PRIVATE qc_kem qc_dsa unity)
 add_test(NAME c_fuzz COMMAND test_fuzz)
 set_tests_properties(c_fuzz PROPERTIES TIMEOUT 300)
+
+# Wycheproof independent cross-check (B-10.3/B-11.3, B-02.3 gate).
+# Vectors vendored as hex tables (tools/wycheproof_to_c.py); no RNG.
+add_executable(test_xcheck test_xcheck.c)
+target_link_libraries(test_xcheck PRIVATE qc_kem qc_dsa unity)
+add_test(NAME c_xcheck COMMAND test_xcheck)
+set_tests_properties(c_xcheck PROPERTIES TIMEOUT 300)
+# The generated vectors header holds string literals past the C99 4095-char
+# portability minimum (a 2400-byte key is 4800 hex chars; chunking adjacent
+# literals does not help — the limit applies after concatenation). GCC and
+# MSVC both accept them; silenced for this generated-data TU only (a
+# per-literal warning here would be pure noise hiding real warnings).
+# Everything else stays under repo-wide -Werror.
+set_source_files_properties(test_xcheck.c PROPERTIES
+    COMPILE_OPTIONS "-Wno-overlength-strings")
