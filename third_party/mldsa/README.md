@@ -4,8 +4,8 @@
 #   https://github.com/pq-code-package/mldsa-native/archive/refs/tags/v2.0.0.tar.gz
 # Tarball SHA256:
 #   97a7305c32b62cbcae97891823176e18ca96d9eaafc3728587d75bb113862a40
-# License: Apache-2.0 OR ISC OR MIT (see upstream LICENSE; vendored tree
-# keeps no license file — the grant is recorded here and in B-01).
+# License: Apache-2.0 OR ISC OR MIT (LICENSE vendored verbatim, SHA256:
+#   22f7173776d0a36d3f13ec1f45d51e0502e67d17e384bddf39690d833974ff93).
 #
 # PRUNED vendor: the single-compilation-unit C backend only
 # (mldsa_native.c bundles all C sources; native/ dirs dropped). B-11 will

@@ -28,6 +28,8 @@
 #   library/constant_time_internal.h    cb5acff773c6129b5dcc29052dc927d9aa474a2e6b7f7e27e5fac0e7d7023463
 #   library/constant_time_impl.h        5afbdaa93eaa2c750c4f3f2d0338409d8e15845823f870a39744d1cc197b4e60
 #   library/ctr.h                       63331eb36d8ea69b4b4dcd2ec059582bcabf51a8ea891db26d37ab033967789f
+#   LICENSE (Apache-2.0 AND GPL-2.0-or-later, verbatim upstream)
+#                                       9b405ef4c89342f5eae1dd828882f931747f71001cfba7d114801039b52ad09b
 #
 # MBEDTLS_BLOCK_CIPHER_C is auto-enabled by mbedTLS when CIPHER_C is absent;
 # crypto/CMakeLists.txt lists exactly the compiled sources rather than

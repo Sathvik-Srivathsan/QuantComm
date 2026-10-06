@@ -4,8 +4,8 @@
 #   https://github.com/pq-code-package/mlkem-native/archive/refs/tags/v2.0.0.tar.gz
 # Tarball SHA256:
 #   76bf71771f09a25f30463218974ae10752d72bca34bbc470c7f6f8655f51d622
-# License: Apache-2.0 OR ISC OR MIT (see upstream LICENSE; vendored tree
-# keeps no license file — the grant is recorded here and in B-01).
+# License: Apache-2.0 OR ISC OR MIT (LICENSE vendored verbatim, SHA256:
+#   1c730e3c2cd4f70e058519ef3e910d8bdd4ed822ae2ce689f3c63d32fc52314b).
 #
 # PRUNED vendor: the single-compilation-unit C backend only
 # (mlkem_native.c bundles all C sources; native/ dirs dropped, so no
