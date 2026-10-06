@@ -18,6 +18,9 @@
 # sign() takes explicit caller randomness: hedged (fresh coins) and
 # deterministic (fixed coins) variants share one API.
 #
+# crypto/mldsa_config_qc.h SHA256:
+#   102e90757ddc5a7075110474c10bdaedb0846bf17be7b71a79f61d5c737c33ca
+#
 # SHA256 (lowercase) of vendored files — verify on re-vendor:
 #   mldsa_native.c                  0d7e19d651e629430b1923f3cba2fb2579639d8bd1f156a2dcd2696aa83f846f
 #   mldsa_native.h                  b30c04756599aaa15301a13bc6025955f275c1e573fc92f96778a7c972fc4d4d

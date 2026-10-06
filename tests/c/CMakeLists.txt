@@ -74,3 +74,8 @@ add_test(NAME c_aead COMMAND test_aead)
 add_executable(test_kem test_kem.c)
 target_link_libraries(test_kem PRIVATE qc_kem unity)
 add_test(NAME c_kem COMMAND test_kem)
+
+# DSA adapter links the three per-level mldsa-native backends (B-01/B-11).
+add_executable(test_dsa test_dsa.c)
+target_link_libraries(test_dsa PRIVATE qc_dsa unity)
+add_test(NAME c_dsa COMMAND test_dsa)

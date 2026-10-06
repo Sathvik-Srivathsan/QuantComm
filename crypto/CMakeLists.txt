@@ -99,3 +99,38 @@ target_compile_definitions(qc_kem PRIVATE
     MLK_CONFIG_FILE="mlkem_config_qc.h"
 )
 target_link_libraries(qc_kem PUBLIC qc_mlkem512 qc_mlkem768 qc_mlkem1024)
+
+# --- mldsa-native (B-01/B-11): same multilevel pattern, levels 44/65/87.
+set(MLDSA_DIR ${CMAKE_SOURCE_DIR}/third_party/mldsa/mldsa)
+
+function(add_mldsa_level LEVEL SHARED_FLAG)
+    set(TGT qc_mldsa${LEVEL})
+    add_library(${TGT} STATIC ${MLDSA_DIR}/mldsa_native.c)
+    target_include_directories(${TGT} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${MLDSA_DIR}
+    )
+    target_compile_definitions(${TGT} PRIVATE
+        MLD_CONFIG_FILE="mldsa_config_qc.h"
+        MLD_CONFIG_PARAMETER_SET=${LEVEL}
+        ${SHARED_FLAG}
+    )
+    set_source_files_properties(${MLDSA_DIR}/mldsa_native.c PROPERTIES
+        COMPILE_OPTIONS "-w")
+endfunction()
+
+add_mldsa_level(44 MLD_CONFIG_MULTILEVEL_WITH_SHARED)
+add_mldsa_level(65 MLD_CONFIG_MULTILEVEL_NO_SHARED)
+add_mldsa_level(87 MLD_CONFIG_MULTILEVEL_NO_SHARED)
+
+add_library(qc_dsa STATIC qc_dsa.c)
+target_include_directories(qc_dsa PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(qc_dsa PRIVATE
+    ${MLDSA_DIR}
+)
+target_compile_definitions(qc_dsa PRIVATE
+    MLD_CONFIG_FILE="mldsa_config_qc.h"
+)
+target_link_libraries(qc_dsa PUBLIC qc_mldsa44 qc_mldsa65 qc_mldsa87)
