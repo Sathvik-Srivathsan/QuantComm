@@ -79,3 +79,14 @@ add_test(NAME c_kem COMMAND test_kem)
 add_executable(test_dsa test_dsa.c)
 target_link_libraries(test_dsa PRIVATE qc_dsa unity)
 add_test(NAME c_dsa COMMAND test_dsa)
+
+# Seeded deterministic negative-matrix fuzz for both PQC adapters
+# (B-10.6/B-11.6). Links the test-only RNG (never production).
+# Generous timeout: DSA-87 signs dominate; hang = fail.
+add_executable(test_fuzz test_fuzz.c
+    ${CMAKE_SOURCE_DIR}/crypto/test_rng.c)
+target_include_directories(test_fuzz PRIVATE
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_fuzz PRIVATE qc_kem qc_dsa unity)
+add_test(NAME c_fuzz COMMAND test_fuzz)
+set_tests_properties(c_fuzz PROPERTIES TIMEOUT 300)
