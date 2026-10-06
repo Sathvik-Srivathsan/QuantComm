@@ -63,3 +63,9 @@ target_include_directories(test_codec PRIVATE
     ${CMAKE_SOURCE_DIR}/core)
 target_link_libraries(test_codec PRIVATE unity)
 add_test(NAME c_codec COMMAND test_codec)
+
+# AEAD adapter links the pruned-mbedTLS library (F4). Include dirs and the
+# MBEDTLS_CONFIG_FILE define come transitively from the qc_aead target.
+add_executable(test_aead test_aead.c)
+target_link_libraries(test_aead PRIVATE qc_aead unity)
+add_test(NAME c_aead COMMAND test_aead)

@@ -11,4 +11,5 @@ add_compile_options(-Wall -Wextra -Werror -Wpedantic)
 include(CTest)
 
 add_subdirectory(third_party/unity)
+add_subdirectory(crypto)
 add_subdirectory(tests/c)
