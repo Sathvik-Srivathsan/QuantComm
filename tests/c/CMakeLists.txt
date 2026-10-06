@@ -69,3 +69,8 @@ add_test(NAME c_codec COMMAND test_codec)
 add_executable(test_aead test_aead.c)
 target_link_libraries(test_aead PRIVATE qc_aead unity)
 add_test(NAME c_aead COMMAND test_aead)
+
+# KEM adapter links the three per-level mlkem-native backends (B-01/B-10).
+add_executable(test_kem test_kem.c)
+target_link_libraries(test_kem PRIVATE qc_kem unity)
+add_test(NAME c_kem COMMAND test_kem)

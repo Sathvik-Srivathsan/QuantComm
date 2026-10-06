@@ -50,3 +50,52 @@ target_compile_definitions(qc_aead PUBLIC
 # are compiled warning-clean-off: they are not our code to fix, and upstream
 # targets may not be pedantic-clean. Scoped to these files only.
 set_source_files_properties(${MBEDTLS_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+
+# --- mlkem-native (B-01/B-10): one single-compilation-unit lib per level.
+# Symbols are namespaced qc_mlkem{512,768,1024}_* via our config +
+# MLK_CONFIG_PARAMETER_SET per target. Derandomized API only (no
+# randombytes symbol needed); all coins come from the caller.
+set(MLKEM_DIR ${CMAKE_SOURCE_DIR}/third_party/mlkem/mlkem)
+
+# Multilevel split (upstream design): exactly one TU compiles the
+# level-independent shared code (WITH_SHARED), the others compile only
+# their level's code (NO_SHARED) and resolve shared symbols at link time
+# from the first lib. Consumers must therefore link all three libs.
+function(add_mlkem_level LEVEL SHARED_FLAG)
+    set(TGT qc_mlkem${LEVEL})
+    add_library(${TGT} STATIC ${MLKEM_DIR}/mlkem_native.c)
+    # PRIVATE: PARAMETER_SET differs per lib and must never leak to
+    # consumers (qc_kem.c sets it per triple-include block itself;
+    # a leaked -D would collide with those in-source #defines).
+    target_include_directories(${TGT} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${MLKEM_DIR}
+    )
+    target_compile_definitions(${TGT} PRIVATE
+        MLK_CONFIG_FILE="mlkem_config_qc.h"
+        MLK_CONFIG_PARAMETER_SET=${LEVEL}
+        ${SHARED_FLAG}
+    )
+    set_source_files_properties(${MLKEM_DIR}/mlkem_native.c PROPERTIES
+        COMPILE_OPTIONS "-w")
+endfunction()
+
+add_mlkem_level(512 MLK_CONFIG_MULTILEVEL_WITH_SHARED)
+add_mlkem_level(768 MLK_CONFIG_MULTILEVEL_NO_SHARED)
+add_mlkem_level(1024 MLK_CONFIG_MULTILEVEL_NO_SHARED)
+
+# qc_kem adapter: triple-includes mlkem_native.h (one level per block),
+# so it needs the backend headers + our config, but must NOT see any
+# PARAMETER_SET -D (see above). mlkem include dir stays PRIVATE: the
+# public qc_kem.h exposes no backend types.
+add_library(qc_kem STATIC qc_kem.c)
+target_include_directories(qc_kem PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(qc_kem PRIVATE
+    ${MLKEM_DIR}
+)
+target_compile_definitions(qc_kem PRIVATE
+    MLK_CONFIG_FILE="mlkem_config_qc.h"
+)
+target_link_libraries(qc_kem PUBLIC qc_mlkem512 qc_mlkem768 qc_mlkem1024)
