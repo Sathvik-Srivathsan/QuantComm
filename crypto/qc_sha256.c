@@ -1,10 +1,13 @@
 /* qc_sha256.c — SHA-256, FIPS 180-4, big-endian, plain C11.
  * No dependencies beyond stdint/string. Constant-time w.r.t. message
  * content by construction (fixed 64-round loop, no data branches).
+ * State wipe uses qc_zeroize (elision-resistant), never plain memset.
  */
 #include "qc_sha256.h"
 
 #include <string.h>
+
+#include "qc_zeroize.h"
 
 qc_sha256_trace_fn qc_sha256_trace = NULL;
 
@@ -124,5 +127,5 @@ void qc_sha256_final(qc_sha256_ctx *ctx, uint8_t out[QC_SHA256_DIGEST_LEN]) {
         out[4 * i + 3] = (uint8_t)(ctx->h[i]);
     }
     /* Leave no state behind in the caller buffer. */
-    memset(ctx, 0, sizeof(*ctx));
+    qc_zeroize(ctx, sizeof(*ctx));
 }

@@ -1,9 +1,12 @@
-/* qc_hmac.c — HMAC-SHA-256 over qc_sha256 streaming API. */
+/* qc_hmac.c — HMAC-SHA-256 over qc_sha256 streaming API.
+ * All key-material clearing goes through qc_zeroize (elision-resistant);
+ * plain memset must never be used for wipes in this file. */
 #include "qc_hmac.h"
 
 #include <string.h>
 
 #include "qc_sha256.h"
+#include "qc_zeroize.h"
 
 void qc_hmac_sha256(const uint8_t *key, size_t key_len,
                     const uint8_t *msg, size_t msg_len,
@@ -22,12 +25,12 @@ void qc_hmac_sha256_sinit(qc_hmac_sha256_stream *s,
 
     if (key_len > 64) {
         qc_sha256(key, key_len, kbuf);
-        memset(kbuf + 32, 0, 32);
+        qc_zeroize(kbuf + 32, 32);
     } else {
         if (key_len > 0 && key != NULL) {
             memcpy(kbuf, key, key_len);
         }
-        memset(kbuf + key_len, 0, 64 - key_len);
+        qc_zeroize(kbuf + key_len, 64 - key_len);
     }
     for (i = 0; i < 64; i++) {
         s->k_opad[i] = kbuf[i] ^ 0x5c;
@@ -35,7 +38,7 @@ void qc_hmac_sha256_sinit(qc_hmac_sha256_stream *s,
     }
     qc_sha256_init(&s->inner);
     qc_sha256_update(&s->inner, kbuf, 64);
-    memset(kbuf, 0, sizeof(kbuf));
+    qc_zeroize(kbuf, sizeof(kbuf));
 }
 
 void qc_hmac_sha256_supdate(qc_hmac_sha256_stream *s,
@@ -54,6 +57,6 @@ void qc_hmac_sha256_sfinal(qc_hmac_sha256_stream *s, uint8_t out[32]) {
     qc_sha256_update(&outer, s->k_opad, 64);
     qc_sha256_update(&outer, inner, 32);
     qc_sha256_final(&outer, out);
-    memset(s, 0, sizeof(*s));
-    memset(inner, 0, sizeof(inner));
+    qc_zeroize(s, sizeof(*s));
+    qc_zeroize(inner, sizeof(inner));
 }

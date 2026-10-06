@@ -1,9 +1,11 @@
-/* qc_hkdf.c — HKDF-SHA-256 over streaming qc_hmac_sha256. No heap. */
+/* qc_hkdf.c — HKDF-SHA-256 over streaming qc_hmac_sha256. No heap.
+ * Chaining-value clearing uses qc_zeroize (elision-resistant). */
 #include "qc_hkdf.h"
 
 #include <string.h>
 
 #include "qc_hmac.h"
+#include "qc_zeroize.h"
 
 int qc_hkdf_extract(const uint8_t *salt, size_t salt_len,
                     const uint8_t *ikm, size_t ikm_len,
@@ -44,7 +46,7 @@ int qc_hkdf_expand(const uint8_t prk[32],
         info_len = 0;
     }
     /* T(0) is empty; T(i) = HMAC(PRK, T(i-1) || info || i). */
-    memset(t, 0, sizeof(t));
+    qc_zeroize(t, sizeof(t));
     while (done < okm_len) {
         size_t take;
         qc_hmac_sha256_sinit(&hs, prk, 32);
@@ -62,6 +64,6 @@ int qc_hkdf_expand(const uint8_t prk[32],
         done += take;
         ctr++;
     }
-    memset(t, 0, sizeof(t));
+    qc_zeroize(t, sizeof(t));
     return 0;
 }
