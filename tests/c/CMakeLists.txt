@@ -82,6 +82,19 @@ target_include_directories(test_epoch PRIVATE
 target_link_libraries(test_epoch PRIVATE unity)
 add_test(NAME c_epoch COMMAND test_epoch)
 
+# Ratchet receiver policy links the ratchet unit + its HKDF deps.
+add_executable(test_rsync test_rsync.c
+    ${CMAKE_SOURCE_DIR}/core/qc_rsync.c
+    ${CMAKE_SOURCE_DIR}/core/qc_ratchet.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c)
+target_include_directories(test_rsync PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_rsync PRIVATE unity)
+add_test(NAME c_rsync COMMAND test_rsync)
+
 # Telemetry frame unit links the AEAD library (payload protection).
 add_library(qc_frame STATIC
     ${CMAKE_SOURCE_DIR}/core/qc_frame.c)
