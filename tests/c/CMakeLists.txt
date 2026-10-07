@@ -74,6 +74,14 @@ target_include_directories(test_replay PRIVATE
 target_link_libraries(test_replay PRIVATE unity)
 add_test(NAME c_replay COMMAND test_replay)
 
+# Epoch/slot/counter/window unit is dependency-free (own CRC32).
+add_executable(test_epoch test_epoch.c
+    ${CMAKE_SOURCE_DIR}/core/qc_epoch.c)
+target_include_directories(test_epoch PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_epoch PRIVATE unity)
+add_test(NAME c_epoch COMMAND test_epoch)
+
 # Server pipeline links core units + own-code crypto + KEM + AEAD libs.
 # test_rng.c provides the deterministic N_S/coins (never production).
 add_executable(test_server test_server.c
