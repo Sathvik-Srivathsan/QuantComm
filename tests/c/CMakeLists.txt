@@ -64,6 +64,16 @@ target_include_directories(test_codec PRIVATE
 target_link_libraries(test_codec PRIVATE unity)
 add_test(NAME c_codec COMMAND test_codec)
 
+# Replay cache unit links SHA-256 (key binds H(ct_S)).
+add_executable(test_replay test_replay.c
+    ${CMAKE_SOURCE_DIR}/core/qc_replay.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c)
+target_include_directories(test_replay PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_replay PRIVATE unity)
+add_test(NAME c_replay COMMAND test_replay)
+
 # AEAD adapter links the pruned-mbedTLS library (F4). Include dirs and the
 # MBEDTLS_CONFIG_FILE define come transitively from the qc_aead target.
 add_executable(test_aead test_aead.c)
