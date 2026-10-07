@@ -6,6 +6,8 @@
  */
 #include "qc_dsa.h"
 
+#include "qc_zeroize.h"
+
 #define MLD_CONFIG_PARAMETER_SET 44
 #include "mldsa_native.h"
 #undef MLD_CONFIG_PARAMETER_SET
@@ -74,6 +76,20 @@ size_t qc_dsa_sig_bytes(qc_dsa_level level) {
     default:
         return 0;
     }
+}
+
+int qc_dsa_free_sk(qc_dsa_level level, uint8_t *sk) {
+    size_t n = qc_dsa_sk_bytes(level);
+
+    if (n == 0) {
+        return QC_DSA_BAD_LEVEL;
+    }
+    qc_zeroize(sk, n);
+    return QC_DSA_OK;
+}
+
+void qc_dsa_free_rnd(uint8_t rnd[QC_DSA_RND_BYTES]) {
+    qc_zeroize(rnd, QC_DSA_RND_BYTES);
 }
 
 /* Build the FIPS 204 domain-separation prefix for (ctx) with the

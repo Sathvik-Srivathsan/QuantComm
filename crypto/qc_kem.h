@@ -69,4 +69,21 @@ size_t qc_kem_pk_bytes(qc_kem_level level);
 size_t qc_kem_sk_bytes(qc_kem_level level);
 size_t qc_kem_ct_bytes(qc_kem_level level);
 
+/* Release wrappers (B-10.4): wipe secret material with qc_zeroize.
+ * Raw caller free/memset without these wrappers is misuse — the wrappers
+ * centralize per-level extents and are the audit point for erasure
+ * evidence. Returns QC_KEM_OK iff bytes were actually wiped; a bad level
+ * returns QC_KEM_BAD_LEVEL and wipes nothing (wiping is impossible to do
+ * safely without the level — wiping the maximum could overflow a smaller
+ * buffer). Callers MUST check the return: a wrong-but-valid level wipes
+ * only that level's prefix, leaving the tail live — passing the creation
+ * level is load-bearing, and silence here would mean believed-erased
+ * live keys. NULL is a safe no-op (returns OK: nothing to erase).
+ * Public values (pk, ct) need no wrapper — there is nothing secret
+ * in them to erase. Coins (keygen/encaps) are caller-owned: wipe them
+ * directly with qc_zeroize; no wrapper exists because their lifetime is
+ * the caller's, not the key's. */
+int qc_kem_free_sk(qc_kem_level level, uint8_t *sk);
+void qc_kem_free_ss(uint8_t ss[QC_KEM_SS_BYTES]);
+
 #endif

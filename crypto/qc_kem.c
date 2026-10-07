@@ -7,6 +7,8 @@
  */
 #include "qc_kem.h"
 
+#include "qc_zeroize.h"
+
 /* Triple-include: fixed level per inclusion, namespaced symbols out.
  * MLK_CONFIG_FILE + MULTILEVEL_BUILD come from the command line / config;
  * PARAMETER_SET is set per inclusion block below. */
@@ -87,6 +89,20 @@ size_t qc_kem_ct_bytes(qc_kem_level level) {
     default:
         return 0;
     }
+}
+
+int qc_kem_free_sk(qc_kem_level level, uint8_t *sk) {
+    size_t n = qc_kem_sk_bytes(level);
+
+    if (n == 0) {
+        return QC_KEM_BAD_LEVEL;
+    }
+    qc_zeroize(sk, n);
+    return QC_KEM_OK;
+}
+
+void qc_kem_free_ss(uint8_t ss[QC_KEM_SS_BYTES]) {
+    qc_zeroize(ss, QC_KEM_SS_BYTES);
 }
 
 int qc_kem_keypair(qc_kem_level level,

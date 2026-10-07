@@ -279,6 +279,39 @@ static void test_misuse(void) {
     TEST_ASSERT_EQUAL_UINT(0, qc_dsa_sig_bytes(97));
 }
 
+/* Release wrappers (B-11.4): exact extents wiped on every level, tail
+ * past the extent untouched, return codes honest. */
+static void test_free_wrappers(void) {
+    static const qc_dsa_level levels[3] = { QC_DSA_44, QC_DSA_65, QC_DSA_87 };
+    static uint8_t sk[4896], rnd[32];
+
+    for (int l = 0; l < 3; l++) {
+        size_t n = qc_dsa_sk_bytes(levels[l]);
+        TEST_ASSERT_TRUE_MESSAGE(n > 0 && n <= sizeof(sk), "extent");
+        memset(sk, 0xA5, sizeof(sk));
+        TEST_ASSERT_EQUAL_INT_MESSAGE(QC_DSA_OK,
+                                      qc_dsa_free_sk(levels[l], sk), "rc");
+        for (size_t i = 0; i < n; i++) {
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, sk[i], "wiped");
+        }
+        for (size_t i = n; i < sizeof(sk); i++) {
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xA5, sk[i], "tail intact");
+        }
+    }
+    memset(rnd, 0xA5, sizeof(rnd));
+    qc_dsa_free_rnd(rnd);
+    for (size_t i = 0; i < sizeof(rnd); i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, rnd[i], "rnd wiped");
+    }
+    TEST_ASSERT_EQUAL_INT(QC_DSA_OK, qc_dsa_free_sk(QC_DSA_65, NULL));
+    qc_dsa_free_rnd(NULL);
+    memset(sk, 0xA5, sizeof(sk));
+    TEST_ASSERT_EQUAL_INT(QC_DSA_BAD_LEVEL, qc_dsa_free_sk(0, sk));
+    for (size_t i = 0; i < sizeof(sk); i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xA5, sk[i], "untouched");
+    }
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -290,5 +323,6 @@ int main(void) {
     RUN_TEST(test_verify_rejects);
     RUN_TEST(test_empty_message);
     RUN_TEST(test_misuse);
+    RUN_TEST(test_free_wrappers);
     return UNITY_END();
 }

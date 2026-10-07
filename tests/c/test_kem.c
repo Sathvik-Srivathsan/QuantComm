@@ -175,6 +175,44 @@ static void test_misuse(void) {
     TEST_ASSERT_EQUAL_UINT(0, qc_kem_ct_bytes(999));
 }
 
+/* Release wrappers (B-10.4): exact extents wiped on every level, tail
+ * past the extent untouched (proves no over-wipe, not just no
+ * under-wipe), return codes honest, bad level wipes nothing. */
+static void test_free_wrappers(void) {
+    static const qc_kem_level levels[3] = {
+        QC_KEM_512, QC_KEM_768, QC_KEM_1024
+    };
+    static uint8_t sk[3168], ss[32];
+
+    for (int l = 0; l < 3; l++) {
+        size_t n = qc_kem_sk_bytes(levels[l]);
+        TEST_ASSERT_TRUE_MESSAGE(n > 0 && n <= sizeof(sk), "extent");
+        memset(sk, 0xA5, sizeof(sk));
+        TEST_ASSERT_EQUAL_INT_MESSAGE(QC_KEM_OK,
+                                      qc_kem_free_sk(levels[l], sk), "rc");
+        for (size_t i = 0; i < n; i++) {
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, sk[i], "wiped");
+        }
+        for (size_t i = n; i < sizeof(sk); i++) {
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xA5, sk[i], "tail intact");
+        }
+    }
+    memset(ss, 0xA5, sizeof(ss));
+    qc_kem_free_ss(ss);
+    for (size_t i = 0; i < sizeof(ss); i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, ss[i], "ss wiped");
+    }
+    /* NULL-safe. */
+    TEST_ASSERT_EQUAL_INT(QC_KEM_OK, qc_kem_free_sk(QC_KEM_768, NULL));
+    qc_kem_free_ss(NULL);
+    /* Bad level: return signals failure AND nothing is wiped. */
+    memset(sk, 0xA5, sizeof(sk));
+    TEST_ASSERT_EQUAL_INT(QC_KEM_BAD_LEVEL, qc_kem_free_sk(0, sk));
+    for (size_t i = 0; i < sizeof(sk); i++) {
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xA5, sk[i], "untouched");
+    }
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -187,5 +225,6 @@ int main(void) {
     RUN_TEST(test_bad_pk);
     RUN_TEST(test_bad_sk);
     RUN_TEST(test_misuse);
+    RUN_TEST(test_free_wrappers);
     return UNITY_END();
 }

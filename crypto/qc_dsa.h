@@ -88,4 +88,16 @@ size_t qc_dsa_pk_bytes(qc_dsa_level level);
 size_t qc_dsa_sk_bytes(qc_dsa_level level);
 size_t qc_dsa_sig_bytes(qc_dsa_level level);
 
+/* Release wrappers (B-11.4): wipe secret material with qc_zeroize.
+ * Same contract as qc_kem_free_*: centralized extents, return-code
+ * honesty (OK iff wiped, BAD_LEVEL otherwise — a wrong-but-valid level
+ * wipes only its prefix, so the creation level is load-bearing),
+ * NULL-safe no-ops. Covers sk (signing key) and rnd (per-signature
+ * randomness — hedged coins must not linger after the call). Keygen seeds
+ * are caller-owned: qc_zeroize them directly. Public values (pk, sig)
+ * need no wrapper. Verify takes no secrets and needs no wrapper by
+ * construction. */
+int qc_dsa_free_sk(qc_dsa_level level, uint8_t *sk);
+void qc_dsa_free_rnd(uint8_t rnd[QC_DSA_RND_BYTES]);
+
 #endif
