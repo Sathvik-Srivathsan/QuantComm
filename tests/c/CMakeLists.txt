@@ -82,6 +82,16 @@ target_include_directories(test_epoch PRIVATE
 target_link_libraries(test_epoch PRIVATE unity)
 add_test(NAME c_epoch COMMAND test_epoch)
 
+# Telemetry frame unit links the AEAD library (payload protection).
+add_library(qc_frame STATIC
+    ${CMAKE_SOURCE_DIR}/core/qc_frame.c)
+target_include_directories(qc_frame PUBLIC
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(qc_frame PUBLIC qc_aead)
+add_executable(test_frame test_frame.c)
+target_link_libraries(test_frame PRIVATE qc_frame unity)
+add_test(NAME c_frame COMMAND test_frame)
+
 # Server pipeline links core units + own-code crypto + KEM + AEAD libs.
 # test_rng.c provides the deterministic N_S/coins (never production).
 add_executable(test_server test_server.c
