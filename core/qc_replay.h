@@ -4,12 +4,18 @@
  *   SHA-256(ct_S)[32], concatenated in this order. Binds the ciphertext
  *   without storing it. One-byte mutation of any component misses.
  *
- * Value: full M2 bytes (for idempotent resend) + completed flag.
- * Lifecycle: insert_inflight -> (pipeline runs KEM/derive) ->
- * complete (stores M2) [completed] — or the entry stays pinned in-flight
- * on failure paths until explicitly removed. Lookup hits:
- *   in-flight + bit-identical retry -> resend cached M2 later (no new KEM);
- *   completed -> drop (replay), no resend.
+ * Value: full M2 bytes (for idempotent resend) + completed flag, where
+ * completed means "M2 stored" and nothing more. Lifecycle: insert
+ * (in-flight, pinned) -> pipeline runs KEM/derive -> complete (stores M2)
+ * — or the entry stays pinned in-flight on failure paths until removed.
+ * The resend-vs-drop POLICY lives in the pipeline (B-22.1), not here:
+ * this unit reports the flag and the bytes; it does not decide. Current
+ * pipeline policy (qc_server, documented there): a live hit resends the
+ * stored M2 (covers the B-20.4 retry carve-out; byte-identical, zero new
+ * KEM work, security-neutral — replayed M1s can only ever receive the
+ * same M2 bytes already on the wire). The drop-on-established-session
+ * rule activates with the session registry (B-40), which owns the
+ * established signal this unit cannot see.
  *
  * Eviction: LRU over COMPLETED entries only; in-flight entries are pinned
  * (no fresh KEM work from eviction, ever). Expiry: entries carry the

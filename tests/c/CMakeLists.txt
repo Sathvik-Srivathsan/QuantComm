@@ -74,6 +74,23 @@ target_include_directories(test_replay PRIVATE
 target_link_libraries(test_replay PRIVATE unity)
 add_test(NAME c_replay COMMAND test_replay)
 
+# Server pipeline links core units + own-code crypto + KEM + AEAD libs.
+# test_rng.c provides the deterministic N_S/coins (never production).
+add_executable(test_server test_server.c
+    ${CMAKE_SOURCE_DIR}/core/qc_server.c
+    ${CMAKE_SOURCE_DIR}/core/qc_replay.c
+    ${CMAKE_SOURCE_DIR}/core/qc_codec.c
+    ${CMAKE_SOURCE_DIR}/core/qc_kdf.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c
+    ${CMAKE_SOURCE_DIR}/crypto/test_rng.c)
+target_include_directories(test_server PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_server PRIVATE qc_kem unity)
+add_test(NAME c_server COMMAND test_server)
+
 # AEAD adapter links the pruned-mbedTLS library (F4). Include dirs and the
 # MBEDTLS_CONFIG_FILE define come transitively from the qc_aead target.
 add_executable(test_aead test_aead.c)
