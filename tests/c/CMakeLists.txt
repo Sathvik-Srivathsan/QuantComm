@@ -104,6 +104,16 @@ target_include_directories(test_manifest PRIVATE
 target_link_libraries(test_manifest PRIVATE qc_dsa unity)
 add_test(NAME c_manifest COMMAND test_manifest)
 
+# Alarm path links frame lib + DSA lib + manifest (threshold gate).
+add_executable(test_alarm test_alarm.c
+    ${CMAKE_SOURCE_DIR}/core/qc_alarm.c
+    ${CMAKE_SOURCE_DIR}/core/qc_manifest.c)
+target_include_directories(test_alarm PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_alarm PRIVATE qc_frame qc_dsa unity)
+add_test(NAME c_alarm COMMAND test_alarm)
+
 # Merkle unit links SHA-256 (tree hashing).
 add_executable(test_merkle test_merkle.c
     ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
