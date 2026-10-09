@@ -95,6 +95,15 @@ target_include_directories(test_rsync PRIVATE
 target_link_libraries(test_rsync PRIVATE unity)
 add_test(NAME c_rsync COMMAND test_rsync)
 
+# Manifest unit links the DSA adapter library (verify under enrolled key).
+add_executable(test_manifest test_manifest.c
+    ${CMAKE_SOURCE_DIR}/core/qc_manifest.c)
+target_include_directories(test_manifest PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_manifest PRIVATE qc_dsa unity)
+add_test(NAME c_manifest COMMAND test_manifest)
+
 # Telemetry frame unit links the AEAD library (payload protection).
 add_library(qc_frame STATIC
     ${CMAKE_SOURCE_DIR}/core/qc_frame.c)
