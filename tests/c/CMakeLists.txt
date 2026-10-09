@@ -104,6 +104,16 @@ target_include_directories(test_manifest PRIVATE
 target_link_libraries(test_manifest PRIVATE qc_dsa unity)
 add_test(NAME c_manifest COMMAND test_manifest)
 
+# Merkle unit links SHA-256 (tree hashing).
+add_executable(test_merkle test_merkle.c
+    ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c)
+target_include_directories(test_merkle PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_merkle PRIVATE unity)
+add_test(NAME c_merkle COMMAND test_merkle)
+
 # Telemetry frame unit links the AEAD library (payload protection).
 add_library(qc_frame STATIC
     ${CMAKE_SOURCE_DIR}/core/qc_frame.c)
