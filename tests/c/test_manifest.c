@@ -291,6 +291,126 @@ static void test_guards(void) {
         qc_manifest_verify_apply(&store, NULL, 10, sig, sizeof(sig), 1));
 }
 
+/* Floor authorization: unchanged/raised/lowered pass with event;
+ * dropped floor refuses; empty store passes. */
+static void test_floors(void) {
+    static uint8_t body[4096], sig[3309];
+    qc_manifest_fields f;
+    qc_manifest_parsed p;
+    qc_floor_event ev;
+    size_t n;
+    static const qc_floor_entry raised[3] = { { 0, 2 }, { 1, 2 }, { 2, 2 } };
+    static const qc_floor_entry lowered[3] = { { 0, 1 }, { 1, 1 }, { 2, 2 } };
+    static const qc_floor_entry dropped[2] = { { 0, 1 }, { 2, 2 } };
+
+    setup_keys();
+    base_fields(&f);
+    n = make_signed(&f, SK, body, sig);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+        qc_manifest_verify_apply(&store, body, n, sig, sizeof(sig), 1000));
+
+    /* Same floors v2: OK, empty event. */
+    f.version = 2;
+    n = make_signed(&f, SK, body, sig);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+        qc_manifest_parse(body, n, &p));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+        qc_manifest_check_floors(&store, &p, &ev));
+    TEST_ASSERT_EQUAL_UINT(0, ev.n_changes);
+    TEST_ASSERT_EQUAL_UINT(2, ev.version);
+
+    /* Raised floor: OK + one change recorded. */
+    f.floors = raised;
+    n = make_signed(&f, SK, body, sig);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+        qc_manifest_parse(body, n, &p));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+        qc_manifest_check_floors(&store, &p, &ev));
+    TEST_ASSERT_EQUAL_UINT(1, ev.n_changes);
+    TEST_ASSERT_EQUAL_UINT8(0, ev.changes[0].cls);
+    TEST_ASSERT_EQUAL_UINT8(1, ev.changes[0].old_level);
+    TEST_ASSERT_EQUAL_UINT8(2, ev.changes[0].new_level);
+
+    /* Authorized lowering: OK (signature+version carry authority). */
+    f.floors = lowered;
+    n = make_signed(&f, SK, body, sig);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+        qc_manifest_parse(body, n, &p));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+        qc_manifest_check_floors(&store, &p, &ev));
+    TEST_ASSERT_EQUAL_UINT(1, ev.n_changes);
+    TEST_ASSERT_EQUAL_UINT8(2, ev.changes[0].old_level);
+    TEST_ASSERT_EQUAL_UINT8(1, ev.changes[0].new_level);
+
+    /* Dropped floor id: REFUSE, no partial event. */
+    f.floors = dropped;
+    f.n_floors = 2;
+    n = make_signed(&f, SK, body, sig);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+        qc_manifest_parse(body, n, &p));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_FLOOR_REFUSED,
+        qc_manifest_check_floors(&store, &p, &ev));
+    TEST_ASSERT_EQUAL_UINT(0, ev.n_changes);
+    TEST_ASSERT_EQUAL_UINT(0, ev.version);
+
+    /* Empty store (provisioned, no manifest): OK with empty event. */
+    {
+        static qc_manifest_store fresh;
+        TEST_ASSERT_EQUAL_INT(QC_MFT_OK_APPLIED,
+            qc_manifest_init(&fresh, QC_DSA_65, PK));
+        TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+            qc_manifest_check_floors(&fresh, &p, &ev));
+        TEST_ASSERT_EQUAL_UINT(0, ev.n_changes);
+    }
+    /* NULL guards. */
+    TEST_ASSERT_EQUAL_INT(QC_MFT_BAD_ARG,
+        qc_manifest_check_floors(NULL, &p, &ev));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_BAD_ARG,
+        qc_manifest_check_floors(&store, NULL, &ev));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_BAD_ARG,
+        qc_manifest_check_floors(&store, &p, NULL));
+}
+
+/* Risk hints: order, replay, de-escalation, rate, reset. */
+static void test_hints(void) {
+    qc_hint_state h;
+
+    qc_hint_reset(&h);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK, qc_hint_check(&h, 1, 3, 1000));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK, qc_hint_check(&h, 2, 3, 1001));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK, qc_hint_check(&h, 3, 5, 1002));
+    /* Replay + duplicate. */
+    TEST_ASSERT_EQUAL_INT(QC_MFT_HINT_REPLAY, qc_hint_check(&h, 3, 9, 1003));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_HINT_REPLAY, qc_hint_check(&h, 1, 9, 1003));
+    /* De-escalation ignored (seq fresh, level lower). */
+    TEST_ASSERT_EQUAL_INT(QC_MFT_HINT_DEESCALATE,
+                          qc_hint_check(&h, 4, 2, 1004));
+    /* NULL guard. */
+    TEST_ASSERT_EQUAL_INT(QC_MFT_BAD_ARG, qc_hint_check(NULL, 5, 9, 1005));
+
+    /* Rate: fresh state, 10 ok then limited, slide recovers. */
+    qc_hint_reset(&h);
+    for (uint64_t s = 1; s <= 10; s++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(QC_MFT_OK,
+            qc_hint_check(&h, s, 1, 2000 + s), "within cap");
+    }
+    TEST_ASSERT_EQUAL_INT(QC_MFT_HINT_RATE,
+                          qc_hint_check(&h, 11, 1, 2011));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+                          qc_hint_check(&h, 12, 1, 2000 + 3601));
+    /* Reset restarts (new handshake/epoch). */
+    qc_hint_reset(&h);
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK, qc_hint_check(&h, 1, 0, 3000));
+}
+
+/* C2 threshold boundary inclusive. */
+static void test_c2_threshold(void) {
+    TEST_ASSERT_EQUAL_INT(0, qc_manifest_c2_sign_p(500, 499));
+    TEST_ASSERT_EQUAL_INT(1, qc_manifest_c2_sign_p(500, 500));
+    TEST_ASSERT_EQUAL_INT(1, qc_manifest_c2_sign_p(500, 501));
+    TEST_ASSERT_EQUAL_INT(1, qc_manifest_c2_sign_p(0, 0));
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -302,6 +422,9 @@ int main(void) {
     RUN_TEST(test_rate_cap);
     RUN_TEST(test_rotation);
     RUN_TEST(test_first_v0_and_sig_len);
+    RUN_TEST(test_floors);
+    RUN_TEST(test_hints);
+    RUN_TEST(test_c2_threshold);
     RUN_TEST(test_guards);
     return UNITY_END();
 }

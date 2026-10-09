@@ -309,3 +309,104 @@ qc_mft_rc qc_manifest_verify_apply(qc_manifest_store *s,
     s->has_manifest = 1;
     return QC_MFT_OK_APPLIED;
 }
+
+qc_mft_rc qc_manifest_check_floors(const qc_manifest_store *s,
+                                   const qc_manifest_parsed *p,
+                                   qc_floor_event *ev) {
+    qc_manifest_parsed cur;
+    size_t i, n = 0;
+    int truncated = 0;
+
+    if (s == NULL || p == NULL || ev == NULL) {
+        return QC_MFT_BAD_ARG;
+    }
+    ev->version = 0;
+    ev->n_changes = 0;
+    ev->truncated = 0;
+    if (!s->has_manifest) {
+        return QC_MFT_OK;
+    }
+    /* Current table: re-parse stored body (single source of truth, never
+     * a shadow copy that could drift). Stored body was valid at apply. */
+    if (qc_manifest_parse(s->body, s->body_len, &cur) != QC_MFT_OK_APPLIED) {
+        return QC_MFT_MALFORMED;
+    }
+    ev->version = p->version;
+    for (i = 0; i < cur.n_floors; i++) {
+        size_t j;
+        int found = 0;
+        for (j = 0; j < p->n_floors; j++) {
+            if (p->floors[j].cls == cur.floors[i].cls) {
+                found = 1;
+                if (p->floors[j].min_level != cur.floors[i].min_level) {
+                    if (n < QC_FLOOR_EVENT_MAX) {
+                        ev->changes[n].cls = cur.floors[i].cls;
+                        ev->changes[n].old_level = cur.floors[i].min_level;
+                        ev->changes[n].new_level = p->floors[j].min_level;
+                        n++;
+                    } else {
+                        truncated = 1;
+                    }
+                }
+                break;
+            }
+        }
+        if (!found) {
+            /* Implicit lowering via restructure: refuse everything and
+             * leave no partial event behind (caller reads ev on OK only,
+             * but belt-and-braces clears it here). */
+            ev->version = 0;
+            ev->n_changes = 0;
+            ev->truncated = 0;
+            return QC_MFT_FLOOR_REFUSED;
+        }
+    }
+    ev->n_changes = n;
+    ev->truncated = (uint8_t)(truncated != 0);
+    return QC_MFT_OK;
+}
+
+void qc_hint_reset(qc_hint_state *h) {
+    if (h == NULL) {
+        return;
+    }
+    h->last_seq = 0;
+    h->last_level = 0;
+    h->has_seen = 0;
+    h->n_times = 0;
+}
+
+qc_mft_rc qc_hint_check(qc_hint_state *h, uint64_t seq, uint8_t level,
+                        uint64_t now) {
+    size_t kept = 0, i;
+
+    if (h == NULL) {
+        return QC_MFT_BAD_ARG;
+    }
+    if (h->has_seen && seq <= h->last_seq) {
+        return QC_MFT_HINT_REPLAY;
+    }
+    if (h->has_seen && level < h->last_level) {
+        return QC_MFT_HINT_DEESCALATE;
+    }
+    for (i = 0; i < h->n_times; i++) {
+        if (h->times[i] + QC_HINT_WINDOW_S > now &&
+            h->times[i] <= now) {
+            h->times[kept++] = h->times[i];
+        }
+    }
+    h->n_times = kept;
+    if (kept >= QC_HINT_PER_MIN) {
+        return QC_MFT_HINT_RATE;
+    }
+    h->times[kept++] = now;
+    h->n_times = kept;
+    h->last_seq = seq;
+    h->last_level = level;
+    h->has_seen = 1;
+    return QC_MFT_OK;
+}
+
+int qc_manifest_c2_sign_p(uint16_t threshold, uint16_t metric) {
+    return metric >= threshold ? 1 : 0;
+}

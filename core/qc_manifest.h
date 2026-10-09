@@ -44,6 +44,7 @@
 
 typedef enum {
     QC_MFT_OK_APPLIED = 0,
+    QC_MFT_OK = 0,          /* alias: non-applying checks passed. */
     QC_MFT_BAD_ARG,     /* NULL pointers. */
     QC_MFT_MALFORMED,   /* structural/schema violation (incl. disorder,
                          * duplicates, oversize, bad codepoints, unknown
@@ -51,7 +52,12 @@ typedef enum {
     QC_MFT_STALE,       /* version <= stored (dropped pre-verify: zero
                          * public-key work performed). */
     QC_MFT_RATE_LIMITED,/* >6 verify attempts in the sliding hour. */
-    QC_MFT_BAD_SIG      /* ML-DSA verify failed. */
+    QC_MFT_BAD_SIG,     /* ML-DSA verify failed. */
+    QC_MFT_FLOOR_REFUSED, /* floor entry lost in restructure (implicit
+                         * lowering): manifest must not apply its floors. */
+    QC_MFT_HINT_REPLAY, /* hint seq <= last-seen (replay/duplicate). */
+    QC_MFT_HINT_RATE,   /* >10 hints in the sliding minute. */
+    QC_MFT_HINT_DEESCALATE /* level below current: ignored (never acts). */
 } qc_mft_rc;
 
 typedef struct {
@@ -123,5 +129,60 @@ qc_mft_rc qc_manifest_verify_apply(qc_manifest_store *s,
                                    const uint8_t *body, size_t body_len,
                                    const uint8_t *sig, size_t sig_len,
                                    uint64_t now);
+
+/* Floor authorization (B-25.3): pure pre-check, no mutation. Caller order
+ * is parse -> check_floors -> verify_apply (emit-before-apply: the event
+ * below is constructed before anything mutates; the B-40 sink consumes it
+ * later). Every CURRENT floor id must exist in the new table (absent =
+ * implicit lowering via restructure -> FLOOR_REFUSED, whole manifest's
+ * floors must not apply). Present-with-lower-value IS allowed here
+ * (authorized reduction rides on the manifest's own signature+version,
+ * verified by the caller next); unchanged floors are omitted from the
+ * event. No stored manifest yet -> OK with empty event. */
+#define QC_FLOOR_EVENT_MAX 64
+
+typedef struct {
+    uint8_t cls;
+    uint8_t old_level;
+    uint8_t new_level;
+} qc_floor_change;
+
+typedef struct {
+    uint32_t version;       /* new manifest version. */
+    size_t n_changes;
+    uint8_t truncated;      /* nonzero if changes exceeded MAX (caller
+                             * must treat as audit gap, not silent). */
+    qc_floor_change changes[QC_FLOOR_EVENT_MAX];
+} qc_floor_event;
+
+qc_mft_rc qc_manifest_check_floors(const qc_manifest_store *s,
+                                   const qc_manifest_parsed *p,
+                                   qc_floor_event *ev);
+
+/* Risk-hint gate (B-25.4): input bytes are already AEAD-authenticated by
+ * the caller (hint processing never triggers public-key work). Accepts
+ * iff seq > last-seen AND level >= current AND rate allows; updates
+ * (last_seq, last_level) on accept only. Level ordering is opaque u8
+ * (B-32 owns semantics; escalate = numerically >=). Reset on every new
+ * handshake/epoch (last 0/0/empty). Caller clock `now` in seconds. */
+#define QC_HINT_PER_MIN 10
+#define QC_HINT_WINDOW_S 60
+
+typedef struct {
+    uint64_t last_seq;
+    uint8_t last_level;
+    uint8_t has_seen;
+    uint64_t times[QC_HINT_PER_MIN];
+    size_t n_times;
+} qc_hint_state;
+
+void qc_hint_reset(qc_hint_state *h);
+qc_mft_rc qc_hint_check(qc_hint_state *h, uint64_t seq, uint8_t level,
+                        uint64_t now);
+
+/* C2 evidentiary rule (B-25.5): sign the alarm iff metric >= threshold.
+ * Both from the manifest (threshold) and deployment metric function;
+ * this unit owns the comparison only. Boundary inclusive. */
+int qc_manifest_c2_sign_p(uint16_t threshold, uint16_t metric);
 
 #endif
