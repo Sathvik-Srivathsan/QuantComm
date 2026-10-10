@@ -196,6 +196,13 @@ qc_mft_rc qc_manifest_restore(qc_manifest_store *ms, qc_store *ns,
     if (version == 0 || body_len > QC_MFT_MAX_BODY) {
         return QC_MFT_MALFORMED;
     }
+    /* Audit hardening: bound the field offsets by READ bytes before
+     * touching them (short files otherwise read stale static content —
+     * bounded and outcome-safe via exact-fit below, but never reason
+     * about stale bytes when a 3-line gate avoids it). */
+    if (12 + body_len + 4 + 2 > n) {
+        return QC_MFT_MALFORMED;
+    }
     level = get_u32(s_img + 12 + body_len);
     pk_len = get_u16(s_img + 12 + body_len + 4);
     /* Exact fit: no trailing garbage (torn writes are impossible via

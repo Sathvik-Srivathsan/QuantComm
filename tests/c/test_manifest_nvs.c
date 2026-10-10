@@ -160,6 +160,30 @@ static void test_rollback(void) {
     remove(IMG_PATH);
 }
 
+/* Torn-forward convergence: image newer than slot adopts + syncs up. */
+static void test_sync_up(void) {
+    qc_manifest_store ms2;
+    qc_store ns2;
+    size_t n;
+
+    craft_ms(3);
+    open_ns();
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+        qc_manifest_persist(&ms, &ns, STORE_PATH, IMG_PATH, NULL));
+    /* Patch image 3 -> 6 (crash-between-files simulation) + re-MAC. */
+    n = read_img(fileimg, sizeof(fileimg));
+    fileimg[7] = 6;
+    remac(fileimg, n);
+    write_img(fileimg, n);
+    memset(&ms2, 0, sizeof(ms2));
+    TEST_ASSERT_EQUAL_INT(QC_MFT_OK,
+        qc_manifest_restore(&ms2, &ns2, ROOT, STORE_PATH, IMG_PATH));
+    TEST_ASSERT_EQUAL_UINT(6, ms2.version);
+    TEST_ASSERT_EQUAL_UINT(6, ns2.manifest_version);
+    remove(STORE_PATH);
+    remove(IMG_PATH);
+}
+
 /* Torn pairs and absence. */
 static void test_shapes(void) {
     qc_manifest_store ms2;
@@ -276,6 +300,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_roundtrip);
     RUN_TEST(test_increase);
+    RUN_TEST(test_sync_up);
     RUN_TEST(test_rollback);
     RUN_TEST(test_shapes);
     RUN_TEST(test_tamper);

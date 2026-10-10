@@ -47,6 +47,8 @@
 #include "qc_manifest.h"
 #include "qc_store.h"
 
+/* ns must be opened (has_root) — persist never opens it (the store may
+ * hold caller state such as Kdev that open would clear). */
 qc_mft_rc qc_manifest_persist(const qc_manifest_store *ms, qc_store *ns,
                               const char *store_path, const char *img_path,
                               const uint8_t *store_nonce);
