@@ -202,6 +202,17 @@ target_include_directories(test_state PRIVATE
 target_link_libraries(test_state PRIVATE unity)
 add_test(NAME c_state COMMAND test_state)
 
+# Optimizer links floor types + SHA/HMAC (export/import MAC).
+add_executable(test_opt test_opt.c
+    ${CMAKE_SOURCE_DIR}/core/qc_opt.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c)
+target_include_directories(test_opt PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_opt PRIVATE unity)
+add_test(NAME c_opt COMMAND test_opt)
+
 # Energy model is pure arithmetic (priors + tables, no crypto linkage).
 add_executable(test_energy test_energy.c
     ${CMAKE_SOURCE_DIR}/core/qc_energy.c)
