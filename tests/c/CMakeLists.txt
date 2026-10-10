@@ -151,6 +151,15 @@ target_include_directories(test_store PRIVATE
 target_link_libraries(test_store PRIVATE qc_aead unity)
 add_test(NAME c_store COMMAND test_store)
 
+# Outage buffer links no crypto (verbatim wire storage + file mirror).
+add_executable(test_buf test_buf.c
+    ${CMAKE_SOURCE_DIR}/core/qc_buf.c
+    ${CMAKE_SOURCE_DIR}/core/qc_buf_file.c)
+target_include_directories(test_buf PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_buf PRIVATE unity)
+add_test(NAME c_buf COMMAND test_buf)
+
 # Merkle unit links SHA-256 (tree hashing).
 add_executable(test_merkle test_merkle.c
     ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
