@@ -202,6 +202,14 @@ target_include_directories(test_state PRIVATE
 target_link_libraries(test_state PRIVATE unity)
 add_test(NAME c_state COMMAND test_state)
 
+# Energy model is pure arithmetic (priors + tables, no crypto linkage).
+add_executable(test_energy test_energy.c
+    ${CMAKE_SOURCE_DIR}/core/qc_energy.c)
+target_include_directories(test_energy PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_energy PRIVATE unity)
+add_test(NAME c_energy COMMAND test_energy)
+
 # Floor engine links the state unit (flagged-vector contract).
 add_executable(test_floor test_floor.c
     ${CMAKE_SOURCE_DIR}/core/qc_floor.c
