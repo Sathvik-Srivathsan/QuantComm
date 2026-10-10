@@ -202,6 +202,15 @@ target_include_directories(test_state PRIVATE
 target_link_libraries(test_state PRIVATE unity)
 add_test(NAME c_state COMMAND test_state)
 
+# Floor engine links the state unit (flagged-vector contract).
+add_executable(test_floor test_floor.c
+    ${CMAKE_SOURCE_DIR}/core/qc_floor.c
+    ${CMAKE_SOURCE_DIR}/core/qc_state.c)
+target_include_directories(test_floor PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_floor PRIVATE unity)
+add_test(NAME c_floor COMMAND test_floor)
+
 # Trace/policy-log schema: state struct + codec (tooling side).
 add_executable(test_trace test_trace.c
     ${CMAKE_SOURCE_DIR}/core/qc_state.c

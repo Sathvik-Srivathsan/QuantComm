@@ -22,6 +22,14 @@ jobs:
       - name: injector-exclusion scan
         run: |
           ! grep -rn --include='*.c' --include='*.h' --exclude='test_rng.c' --exclude='test_entropy.c' -e 'test_rng_seed' -e 'test_entropy_seed' -e 'test_entropy_fail' -e 'qc_sim_seed' crypto/ core/ server/ gateway/
+      # Floor-bypass exclusion (B-31.5): S0/S1/S4-style floor bypass must
+      # never exist in firmware sources. Pattern targets floor-adjacent
+      # bypass concepts only — the spec-mandated QC_BATCH_C2_BYPASS
+      # mechanism is intentionally out of scope (verified clean 2026-10).
+      # tests/ + sim/ excluded (experiment-config bypass lives there).
+      - name: floor-bypass exclusion scan
+        run: |
+          ! grep -rni --include='*.c' --include='*.h' -e 'floor[_ ]*bypass' -e 'bypass[_ ]*floor' crypto/ core/ server/ gateway/
   python:
     runs-on: ubuntu-latest
     steps:
