@@ -45,6 +45,10 @@
 typedef enum {
     QC_MFT_OK_APPLIED = 0,
     QC_MFT_OK = 0,          /* alias: non-applying checks passed. */
+    QC_MFT_NOT_FOUND,   /* no persisted state (neither store nor image):
+                          * fresh device — SL1 static floors + B-41
+                          * re-enrollment own this path (added for the
+                          * NVS wiring; no other unit returns it). */
     QC_MFT_BAD_ARG,     /* NULL pointers. */
     QC_MFT_MALFORMED,   /* structural/schema violation (incl. disorder,
                          * duplicates, oversize, bad codepoints, unknown

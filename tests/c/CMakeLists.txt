@@ -104,6 +104,22 @@ target_include_directories(test_manifest PRIVATE
 target_link_libraries(test_manifest PRIVATE qc_dsa unity)
 add_test(NAME c_manifest COMMAND test_manifest)
 
+# Manifest NVS wiring links manifest + persist TU + store + file backend
+# + HKDF/HMAC/SHA (image MAC) + DSA lib (level/pk-size validation).
+add_executable(test_manifest_nvs test_manifest_nvs.c
+    ${CMAKE_SOURCE_DIR}/core/qc_manifest.c
+    ${CMAKE_SOURCE_DIR}/core/qc_manifest_persist.c
+    ${CMAKE_SOURCE_DIR}/core/qc_store.c
+    ${CMAKE_SOURCE_DIR}/core/qc_store_file.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c)
+target_include_directories(test_manifest_nvs PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_manifest_nvs PRIVATE qc_aead qc_dsa unity)
+add_test(NAME c_manifest_nvs COMMAND test_manifest_nvs)
+
 # Alarm path links frame lib + DSA lib + manifest (threshold gate).
 add_executable(test_alarm test_alarm.c
     ${CMAKE_SOURCE_DIR}/core/qc_alarm.c
