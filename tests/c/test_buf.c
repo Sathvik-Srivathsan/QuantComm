@@ -150,6 +150,45 @@ static void test_pinning(void) {
     }
 }
 
+/* Mixed pinning (audit): C2 at reservation + C0 bulk — a C1 insert
+ * evicts C0 only; all 8 C2 survive. */
+static void test_mixed_pinning(void) {
+    static uint8_t out[2048];
+    size_t n;
+    uint8_t cls;
+    qc_buf_counters c;
+    int i, nc2 = 0, total = 0;
+
+    qc_buf_init(&buf);
+    for (i = 0; i < 8; i++) {
+        fill((uint8_t)(0xC0 + i), 1024);
+        TEST_ASSERT_EQUAL_INT(QC_BUF_OK,
+            qc_buf_insert(&buf, payload, 1024, 2, qc_buf_score(2, 0),
+                          1, (uint64_t)i, 1000));
+    }
+    for (i = 0; i < 8; i++) {
+        fill((uint8_t)i, 1024);
+        TEST_ASSERT_EQUAL_INT(QC_BUF_OK,
+            qc_buf_insert(&buf, payload, 1024, 0, qc_buf_score(0, 0),
+                          1, (uint64_t)(100 + i), (uint64_t)(1000 + i)));
+    }
+    fill(0xE1, 100);
+    TEST_ASSERT_EQUAL_INT(QC_BUF_OK,
+        qc_buf_insert(&buf, payload, 100, 1, qc_buf_score(1, 0),
+                      1, 200, 2000));
+    qc_buf_counts(&buf, &c);
+    TEST_ASSERT_EQUAL_UINT(1, c.evicted);
+    while (qc_buf_pop(&buf, out, sizeof(out), &n, &cls, NULL, NULL,
+                      2001) == QC_BUF_OK) {
+        total++;
+        if (cls == 2) {
+            nc2++;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(8, nc2);
+    TEST_ASSERT_EQUAL_INT(16, total); /* 8 C2 + 7 C0 + 1 C1 */
+}
+
 /* Past reservation with only pinned C2 left: C2 insert -> PRESSURE. */
 static void test_pressure(void) {
     qc_buf_counters c;
@@ -407,6 +446,7 @@ int main(void) {
     RUN_TEST(test_drain_order);
     RUN_TEST(test_evict_order);
     RUN_TEST(test_pinning);
+    RUN_TEST(test_mixed_pinning);
     RUN_TEST(test_pressure);
     RUN_TEST(test_excess_evict);
     RUN_TEST(test_ttl);

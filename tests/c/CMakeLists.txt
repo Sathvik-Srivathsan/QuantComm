@@ -176,6 +176,24 @@ target_include_directories(test_buf PRIVATE
 target_link_libraries(test_buf PRIVATE unity)
 add_test(NAME c_buf COMMAND test_buf)
 
+# Batcher is bytes-only (close policy + FIFO, no crypto).
+add_executable(test_batch test_batch.c
+    ${CMAKE_SOURCE_DIR}/core/qc_batch.c)
+target_include_directories(test_batch PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_batch PRIVATE unity)
+add_test(NAME c_batch COMMAND test_batch)
+
+# B-24 composition probe: batch -> frame -> buffer -> drain -> open.
+add_executable(test_pipeline test_pipeline.c
+    ${CMAKE_SOURCE_DIR}/core/qc_batch.c
+    ${CMAKE_SOURCE_DIR}/core/qc_frame.c
+    ${CMAKE_SOURCE_DIR}/core/qc_buf.c)
+target_include_directories(test_pipeline PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_pipeline PRIVATE qc_aead unity)
+add_test(NAME c_pipeline COMMAND test_pipeline)
+
 # Merkle unit links SHA-256 (tree hashing).
 add_executable(test_merkle test_merkle.c
     ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
