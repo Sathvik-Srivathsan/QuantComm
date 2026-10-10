@@ -211,6 +211,17 @@ target_include_directories(test_floor PRIVATE
 target_link_libraries(test_floor PRIVATE unity)
 add_test(NAME c_floor COMMAND test_floor)
 
+# Risk scoring links SHA-256/HMAC (export/import MAC) + state types.
+add_executable(test_risk test_risk.c
+    ${CMAKE_SOURCE_DIR}/core/qc_risk.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c)
+target_include_directories(test_risk PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_risk PRIVATE unity)
+add_test(NAME c_risk COMMAND test_risk)
+
 # Trace/policy-log schema: state struct + codec (tooling side).
 add_executable(test_trace test_trace.c
     ${CMAKE_SOURCE_DIR}/core/qc_state.c

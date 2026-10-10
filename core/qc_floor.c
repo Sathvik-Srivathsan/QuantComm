@@ -59,16 +59,11 @@ static int ta_floor_rank(uint8_t s_eff) {
     return 0;
 }
 
-qc_floor_rc qc_floor_select(const qc_state *s, float r_thr,
+qc_floor_rc qc_floor_select(const qc_state *s, int r_high,
                             qc_floor_basis *out) {
     int i;
 
     if (s == NULL || !s->init || out == NULL) {
-        return QC_FLOOR_BAD_ARG;
-    }
-    /* Threshold sanity: NaN/out-of-range must not silently select the
-     * less-restrictive band (fail-closed on caller error). */
-    if (!((r_thr >= 0.0f) && (r_thr <= 1.0f))) {
         return QC_FLOOR_BAD_ARG;
     }
     /* M-component flag (pair 4, any of 01/10/11) wins over everything. */
@@ -83,14 +78,14 @@ qc_floor_rc qc_floor_select(const qc_state *s, float r_thr,
             return QC_FLOOR_OK;
         }
     }
-    /* Clean vector: measured values (defensive C2/high if S escaped
-     * the sampler — unreachable, guarded for totality). */
+    /* Clean vector: measured S stepped by the MACHINE band (defensive
+     * C2/high if S escaped the sampler — unreachable, guarded). */
     if (s->s > 2) {
         out->s_eff = 2;
         out->r_high = 1;
         return QC_FLOOR_OK;
     }
-    if (s->r >= r_thr) {
+    if (r_high) {
         out->s_eff = s->s == 2 ? 2 : (uint8_t)(s->s + 1);
         out->r_high = 1;
     } else {

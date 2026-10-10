@@ -105,8 +105,13 @@ typedef struct {
     uint8_t r_high; /* nonzero iff high band. */
 } qc_floor_basis;
 
-/* Basis selection (flagged contract). Mask read from s. */
-qc_floor_rc qc_floor_select(const qc_state *s, float r_thr,
+/* Basis selection (flagged contract). Mask read from s. r_high is the
+ * B-32 MACHINE band (qc_risk_high: nonzero HIGH, zero NORMAL) — audit
+ * correction: an earlier cut re-derived the band from R vs a threshold,
+ * which disagrees with the machine pre-enter/post-streak. Spec assigns
+ * the band to B-32 hysteresis; B-31 consumes it verbatim (thresholds
+ * live in the risk config, never here). */
+qc_floor_rc qc_floor_select(const qc_state *s, int r_high,
                             qc_floor_basis *out);
 
 /* Single predicates (also the B-34 hold re-check path). C4/C5 report

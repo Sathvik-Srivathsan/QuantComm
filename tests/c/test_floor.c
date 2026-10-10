@@ -15,13 +15,6 @@
 #include "qc_floor.h"
 #include "qc_state.h"
 
-static float make_nan(void) {
-    uint32_t u = 0x7FC00000u;
-    float v;
-    memcpy(&v, &u, 4);
-    return v;
-}
-
 static qc_state s;
 static qc_floor_table tab;
 static qc_floor_cfg cfg;
@@ -77,48 +70,51 @@ static void test_select(void) {
     sample_clean(0, 0.1f, 1000);
     s.mask |= (uint16_t)(2u << (2 * QC_STATE_COMP_M));
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_HOLD,
-        qc_floor_select(&s, 0.7f, &b));
+        qc_floor_select(&s, 0, &b));
     /* Other-flagged pair -> C2/high regardless of measured values. */
     qc_state_init(&s);
     sample_clean(0, 0.1f, 1000);
     s.mask |= (uint16_t)(1u << (2 * QC_STATE_COMP_C));
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
-        qc_floor_select(&s, 0.7f, &b));
+        qc_floor_select(&s, 0, &b));
     TEST_ASSERT_EQUAL_UINT8(2, b.s_eff);
     TEST_ASSERT_EQUAL_UINT8(1, b.r_high);
-    /* Clean low-R: measured basis. */
+    /* Clean + machine NORMAL: measured basis, no stepping. */
     qc_state_init(&s);
     sample_clean(1, 0.2f, 1000);
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
-        qc_floor_select(&s, 0.7f, &b));
+        qc_floor_select(&s, 0, &b));
     TEST_ASSERT_EQUAL_UINT8(1, b.s_eff);
     TEST_ASSERT_EQUAL_UINT8(0, b.r_high);
-    /* Clean high-R: step up (C1->C2, C2 stays). */
+    /* Clean + machine HIGH: step up (C1->C2, C2 stays). */
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
-        qc_floor_select(&s, 0.1f, &b));
+        qc_floor_select(&s, 1, &b));
     TEST_ASSERT_EQUAL_UINT8(2, b.s_eff);
     TEST_ASSERT_EQUAL_UINT8(1, b.r_high);
     qc_state_init(&s);
     sample_clean(2, 0.9f, 1000);
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
-        qc_floor_select(&s, 0.1f, &b));
+        qc_floor_select(&s, 1, &b));
     TEST_ASSERT_EQUAL_UINT8(2, b.s_eff);
+    /* Audit case: high R but machine still NORMAL (pre-enter streak)
+     * must NOT step — band rules, not a re-derived threshold. */
+    qc_state_init(&s);
+    sample_clean(0, 0.8f, 1000);
+    TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
+        qc_floor_select(&s, 0, &b));
+    TEST_ASSERT_EQUAL_UINT8(0, b.s_eff);
+    TEST_ASSERT_EQUAL_UINT8(0, b.r_high);
     /* Defensive S out of range -> C2/high. */
     qc_state_init(&s);
     sample_clean(0, 0.1f, 1000);
     s.s = 9;
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_OK,
-        qc_floor_select(&s, 0.7f, &b));
+        qc_floor_select(&s, 0, &b));
     TEST_ASSERT_EQUAL_UINT8(2, b.s_eff);
-    /* Bad threshold never defaults low. */
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_BAD_ARG,
-        qc_floor_select(&s, make_nan(), &b));
+        qc_floor_select(NULL, 0, &b));
     TEST_ASSERT_EQUAL_INT(QC_FLOOR_BAD_ARG,
-        qc_floor_select(&s, 2.0f, &b));
-    TEST_ASSERT_EQUAL_INT(QC_FLOOR_BAD_ARG,
-        qc_floor_select(NULL, 0.5f, &b));
-    TEST_ASSERT_EQUAL_INT(QC_FLOOR_BAD_ARG,
-        qc_floor_select(&s, 0.5f, NULL));
+        qc_floor_select(&s, 0, NULL));
 }
 
 static void test_c1(void) {
