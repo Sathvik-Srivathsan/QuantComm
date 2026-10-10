@@ -247,6 +247,12 @@ qc_store_rc qc_store_load(qc_store *s, qc_store_read_fn read_fn) {
         return QC_STORE_BAD_ARG;
     }
     if (read_fn(file, sizeof(file), &n) != 0 || n == 0) {
+        /* Audit F6a/F7b: wipe even here (a failing backend may have left
+         * partial bytes). Hard backend errors conflate into NOT_FOUND —
+         * fail-safe direction (caller halts either way), audit-poor;
+         * documented, not split: splitting would need a backend error
+         * taxonomy this hook contract deliberately avoids. */
+        qc_zeroize(file, sizeof(file));
         return QC_STORE_NOT_FOUND;
     }
     if (n != QC_STORE_FILE_LEN) {
@@ -290,9 +296,34 @@ qc_store_rc qc_store_load(qc_store *s, qc_store_read_fn read_fn) {
     if ((klen != 0 && klen != QC_STORE_KDEV_WRAP_LEN) ||
         (klen == 0 && (present & 0x01))) {
         /* Length/capability mismatch: corrupt image (not a partial
-         * read — length exact-checked above). */
+         * read — length exact-checked above). Audit F7d: the reverse
+         * inconsistency (klen=60 with kdev-bit clear) is TOLERATED —
+         * unwrap proceeds and sets has_kdev. Only our own writer can
+         * produce it (MAC covers both fields), so refusal buys nothing. */
         qc_zeroize(file, sizeof(file));
         return QC_STORE_CORRUPT;
+    }
+    /* Anti-rollback on load (audit F1): a MAC-valid but OLDER image must
+     * not move live state backward. Setters enforce this (STALE); load
+     * bypassed it. Gate here BEFORE mutating s (including before the Kdev
+     * unwrap below, so a refused load leaves RAM fully intact). (Loaded
+     * epoch == UINT64_MAX is accepted as-recorded; the next set_epoch
+     * refuses it, so the store is effectively halted — noted, not
+     * refused, since the persisted state itself is faithfully
+     * reported.) */
+    {
+        uint32_t file_mv = get_u32be(file + 70);
+        uint64_t file_epoch = get_u64be(file + 74);
+        if (s->has_manifest_version && (present & 0x02) &&
+            file_mv < s->manifest_version) {
+            qc_zeroize(file, sizeof(file));
+            return QC_STORE_STALE;
+        }
+        if (s->has_epoch && (present & 0x04) &&
+            file_epoch < s->epoch) {
+            qc_zeroize(file, sizeof(file));
+            return QC_STORE_STALE;
+        }
     }
     /* Unwrap Kdev if present. */
     if (klen > 0) {
@@ -302,7 +333,11 @@ qc_store_rc qc_store_load(qc_store *s, qc_store_read_fn read_fn) {
         }
         if (qc_aead_decrypt(kkey, 32, file + 10, 12, NULL, 0,
                             file + 22, 32, file + 54, kdev) != 0) {
+            /* Audit F6b: wipe kdev too (defense in depth — the adapter
+             * already wipes on AUTH_FAIL per the B-12 deviation, but this
+             * frame must not depend on callee wipe discipline). */
             qc_zeroize(kkey, sizeof(kkey));
+            qc_zeroize(kdev, sizeof(kdev));
             qc_zeroize(file, sizeof(file));
             return QC_STORE_CORRUPT;
         }

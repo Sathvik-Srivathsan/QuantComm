@@ -125,6 +125,19 @@ target_include_directories(test_drbg PRIVATE
 target_link_libraries(test_drbg PRIVATE unity)
 add_test(NAME c_drbg COMMAND test_drbg)
 
+# Production RNG path links the REAL entropy TU (live getrandom — the
+# only test closure containing it; audit F3). Never the test injector.
+add_executable(test_prod_rng test_prod_rng.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_rng_prod.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_drbg.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_entropy.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c)
+target_include_directories(test_prod_rng PRIVATE
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_prod_rng PRIVATE unity)
+add_test(NAME c_prod_rng COMMAND test_prod_rng)
+
 # Store links HKDF + AEAD lib (wrap + file MAC) + zeroize.
 add_executable(test_store test_store.c
     ${CMAKE_SOURCE_DIR}/core/qc_store.c

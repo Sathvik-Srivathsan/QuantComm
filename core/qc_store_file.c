@@ -70,7 +70,9 @@ static int load_hook(uint8_t *out, size_t cap, size_t *len_out) {
         out[n++] = (uint8_t)c;
     }
     /* Larger than cap: corrupt/unexpected for our fixed-size store
-     * (never truncate silently). */
+     * (never truncate silently). Audit F7a: the pre-stat in
+     * qc_store_file_load makes this TOCTOU-only, and a racing grow maps
+     * to NOT_FOUND via the hook contract (fail-safe; documented). */
     if (n == cap && fgetc(f) != EOF) {
         fclose(f);
         return -1;

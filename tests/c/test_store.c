@@ -207,6 +207,37 @@ static void test_backend_shapes(void) {
     remove(PATH2);
 }
 
+/* Load-time anti-rollback (audit F1): a MAC-valid OLDER image must not
+ * move live state backward — STALE with RAM fully intact (Kdev included,
+ * since the gate precedes the unwrap). Equal values still load (no false
+ * refusal). */
+static void test_rollback_load(void) {
+    setup_store(); /* epoch 42, mv 7, Kdev set */
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK,
+        qc_store_file_save(&store, PATH1, NONCE));
+    /* Newer live state, then load the older image -> STALE. */
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK, qc_store_open(&store, ROOT));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK, qc_store_set_epoch(&store, 100));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK,
+                          qc_store_set_manifest_version(&store, 9));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK, qc_store_set_kdev(&store, KDEV));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_STALE,
+        qc_store_file_load(&store, PATH1));
+    TEST_ASSERT_EQUAL_UINT64(100, store.epoch);
+    TEST_ASSERT_EQUAL_UINT(9, store.manifest_version);
+    TEST_ASSERT_EQUAL_INT(1, store.has_kdev);
+    /* Equal values load fine. */
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK, qc_store_open(&store, ROOT));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK, qc_store_set_epoch(&store, 42));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK,
+                          qc_store_set_manifest_version(&store, 7));
+    TEST_ASSERT_EQUAL_INT(QC_STORE_OK,
+        qc_store_file_load(&store, PATH1));
+    TEST_ASSERT_EQUAL_UINT64(42, store.epoch);
+    TEST_ASSERT_EQUAL_UINT(7, store.manifest_version);
+    remove(PATH1);
+}
+
 /* Monotonicity + saturation + get-before-set + NULL guards. */
 static void test_rules(void) {
     static uint8_t kdev[32];
@@ -248,6 +279,7 @@ int main(void) {
     RUN_TEST(test_nonce_freshness);
     RUN_TEST(test_corruption);
     RUN_TEST(test_backend_shapes);
+    RUN_TEST(test_rollback_load);
     RUN_TEST(test_rules);
     return UNITY_END();
 }

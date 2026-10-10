@@ -11,6 +11,17 @@ jobs:
         run: cmake --build build
       - name: test
         run: ctest --test-dir build --output-on-failure
+      # Injector-exclusion scan (audit F4; makes the B-02/B-13.1/qc_rng.h
+      # "scan enforces" claims real). Test-injector SYMBOLS must never
+      # appear in production sources — filename mentions in comments
+      # (e.g. qc_rng.h documenting the rule) are fine, hence symbols not
+      # basenames. The two injector TUs themselves live in crypto/ (test
+      # builds only) and are excluded here; new test TUs must stay out of
+      # prod dirs or be added below. sim/ out of scope by design
+      # (SIM-only stubs live there).
+      - name: injector-exclusion scan
+        run: |
+          ! grep -rn --include='*.c' --include='*.h' --exclude='test_rng.c' --exclude='test_entropy.c' -e 'test_rng_seed' -e 'test_entropy_seed' -e 'test_entropy_fail' -e 'qc_sim_seed' crypto/ core/ server/ gateway/
   python:
     runs-on: ubuntu-latest
     steps:

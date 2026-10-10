@@ -20,8 +20,11 @@ static void hmac2(const uint8_t *key, size_t klen,
                   const uint8_t *c, size_t clen,
                   uint8_t out[32]) {
     /* Our one-shot takes (key,key_len,msg,msg_len): concatenate small
-     * parts on the stack (max V||0x01||seed = 32+1+256, enforced by the
-     * QC_DRBG_MAX_SEED gate in reseed — never silently truncated). */
+     * parts on the stack. Audit F8: the workspace is an EXACT fit
+     * (32+1+256 = 289 for V||0x01||seed) and stays safe ONLY because
+     * both entry points gate inputs at QC_DRBG_MAX_SEED (reseed caps
+     * entropy_len, generate caps add_len) — never silently truncated.
+     * Any future caller passing longer material must add its own gate. */
     uint8_t msg[1 + 32 + QC_DRBG_MAX_SEED];
     size_t n = 0;
 
@@ -91,7 +94,6 @@ int qc_drbg_reseed(qc_drbg *d, const uint8_t *entropy, size_t entropy_len) {
      * first generate() with now >= T will auto-reseed once — harmless
      * and deterministic under the same provider). */
     d->reseed_ctr = 1;
-    d->pid = getpid();
     drbg_update(d, entropy, entropy_len);
     d->out_total = 0;
     d->pid = getpid();

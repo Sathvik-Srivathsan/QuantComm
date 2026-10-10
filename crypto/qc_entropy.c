@@ -7,10 +7,17 @@
 #include <string.h>
 #include <sys/random.h>
 
+#include "qc_zeroize.h"
+
 /* Previous 32 B block for the stuck-output continuous test. Zero-init:
  * first call always passes the comparison (documented bootstrap). */
 static uint8_t s_prev[32];
 static int s_have_prev = 0;
+
+void qc_entropy_forget(void) {
+    qc_zeroize(s_prev, sizeof(s_prev));
+    s_have_prev = 0;
+}
 
 static void audit_set(char audit[QC_ENTROPY_AUDIT_LEN], const char *s) {
     size_t i = 0;

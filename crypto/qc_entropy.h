@@ -9,9 +9,14 @@
  * identical consecutive 32 B blocks fail — FIPS 140-style continuous
  * test); bounded retries (<= 3) each with a fresh health check, then
  * RNG_FAIL + audit; no retry-until-success bypass. Blocking poll with
- * bounded wait (getrandom flags=0 may block pre-boot; attempts capped).
- * Per-call cap QC_ENTROPY_MAX (sanity; callers needing more loop).
- * ESP32 port swaps this TU for the HW-RNG one (same header).
+ * ATTEMPTS capped at 3 — audit correction (F5): there is NO per-call
+ * timeout; getrandom(flags=0) may block pre-boot, so early-boot callers
+ * must treat this as potentially-blocking. Per-call cap QC_ENTROPY_MAX
+ * (sanity; callers needing more loop). ESP32 port swaps this TU for the
+ * HW-RNG one (same header).
+ *
+ * Stuck-test history (last 32 B) is process-lifetime BSS; qc_entropy_forget()
+ * wipes it (audit F6c). No auto-wipe: there is no exit hook in this TU.
  */
 #ifndef QC_ENTROPY_H
 #define QC_ENTROPY_H
@@ -28,5 +33,8 @@
  * must treat the buffer as unusable, same rule as qc_rng_generate. */
 int qc_entropy_poll(uint8_t *out, size_t len,
                     char audit[QC_ENTROPY_AUDIT_LEN]);
+
+/* Wipe stuck-test history (process-lifetime BSS). No output. */
+void qc_entropy_forget(void);
 
 #endif
