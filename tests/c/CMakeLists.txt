@@ -114,6 +114,30 @@ target_include_directories(test_alarm PRIVATE
 target_link_libraries(test_alarm PRIVATE qc_frame qc_dsa unity)
 add_test(NAME c_alarm COMMAND test_alarm)
 
+# DRBG links the deterministic test entropy provider (never prod).
+add_executable(test_drbg test_drbg.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_drbg.c
+    ${CMAKE_SOURCE_DIR}/crypto/test_entropy.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c)
+target_include_directories(test_drbg PRIVATE
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_drbg PRIVATE unity)
+add_test(NAME c_drbg COMMAND test_drbg)
+
+# Store links HKDF + AEAD lib (wrap + file MAC) + zeroize.
+add_executable(test_store test_store.c
+    ${CMAKE_SOURCE_DIR}/core/qc_store.c
+    ${CMAKE_SOURCE_DIR}/core/qc_store_file.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hkdf.c)
+target_include_directories(test_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_store PRIVATE qc_aead unity)
+add_test(NAME c_store COMMAND test_store)
+
 # Merkle unit links SHA-256 (tree hashing).
 add_executable(test_merkle test_merkle.c
     ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
