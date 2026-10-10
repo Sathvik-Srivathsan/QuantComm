@@ -194,6 +194,23 @@ target_include_directories(test_pipeline PRIVATE
 target_link_libraries(test_pipeline PRIVATE qc_aead unity)
 add_test(NAME c_pipeline COMMAND test_pipeline)
 
+# Controller state vector: pure validation logic, no deps.
+add_executable(test_state test_state.c
+    ${CMAKE_SOURCE_DIR}/core/qc_state.c)
+target_include_directories(test_state PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_state PRIVATE unity)
+add_test(NAME c_state COMMAND test_state)
+
+# Trace/policy-log schema: state struct + codec (tooling side).
+add_executable(test_trace test_trace.c
+    ${CMAKE_SOURCE_DIR}/core/qc_state.c
+    ${CMAKE_SOURCE_DIR}/core/qc_trace.c)
+target_include_directories(test_trace PRIVATE
+    ${CMAKE_SOURCE_DIR}/core)
+target_link_libraries(test_trace PRIVATE unity)
+add_test(NAME c_trace COMMAND test_trace)
+
 # Merkle unit links SHA-256 (tree hashing).
 add_executable(test_merkle test_merkle.c
     ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
