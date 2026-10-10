@@ -202,6 +202,17 @@ target_include_directories(test_state PRIVATE
 target_link_libraries(test_state PRIVATE unity)
 add_test(NAME c_state COMMAND test_state)
 
+# Governor links SHA/HMAC (persist MAC) + floor action type.
+add_executable(test_gov test_gov.c
+    ${CMAKE_SOURCE_DIR}/core/qc_gov.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_sha256.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_hmac.c)
+target_include_directories(test_gov PRIVATE
+    ${CMAKE_SOURCE_DIR}/core
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_gov PRIVATE unity)
+add_test(NAME c_gov COMMAND test_gov)
+
 # Optimizer links floor types + SHA/HMAC (export/import MAC).
 add_executable(test_opt test_opt.c
     ${CMAKE_SOURCE_DIR}/core/qc_opt.c
