@@ -34,7 +34,7 @@ import logging
 from collections import OrderedDict
 
 from . import _bridge as B
-from .registry import Registry
+from .registry import CredentialStore, Registry
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +110,16 @@ async def srv_handshake(m1, ctx, *, coins_ns, coins_k2, now=0.0):
     if code != "ok":
         log.info("m1 %s disposition=%s", dev_id.hex(), code)
         return code, None
-    kdev = ctx.get("kdevs", {}).get(dev_id)
+    # Kdev source: plain dict (tests/legacy) or CredentialStore
+    # (role-enforced custody — the B-41.2 path).
+    _kdevs = ctx.get("kdevs", {})
+    if isinstance(_kdevs, CredentialStore):
+        try:
+            kdev = _kdevs.get(dev_id, "handshake")
+        except PermissionError:
+            kdev = None
+    else:
+        kdev = _kdevs.get(dev_id)
     if kdev is None or len(kdev) != 32:
         _sat_inc(counters, "auth-fail")
         log.info("m1 %s disposition=drop-auth (no credential)",

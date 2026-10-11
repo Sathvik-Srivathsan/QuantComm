@@ -16,6 +16,8 @@ no-plaintext test enforces this at the stores, not here).
 import asyncio
 from dataclasses import dataclass, field
 
+from . import _bridge as _B
+
 
 @dataclass
 class RegistryEntry:
@@ -53,12 +55,14 @@ class Registry:
         self._capacity = capacity
         self._idle_timeout = idle_timeout_s
         self._entries = {}
+        self._tombstones = set()
         self._lock = asyncio.Lock()
         self.counters = {
             "unknown_drops": 0,
             "blacklist_drops": 0,
             "config_drops": 0,
             "full_refusals": 0,
+            "tombstone_refusals": 0,
             "evictions": 0,
         }
 
@@ -77,6 +81,9 @@ class Registry:
         async with self._lock:
             if key in self._entries:
                 return "exists"
+            if key in self._tombstones:
+                self.counters["tombstone_refusals"] += 1
+                return "refuse-tombstoned"
             if len(self._entries) >= self._capacity:
                 self.counters["full_refusals"] += 1
                 return "refuse-full"
@@ -163,3 +170,102 @@ class Registry:
         """Test/debug lookup (returns the live entry or None)."""
         self._check_id(device_id)
         return self._entries.get(bytes(device_id))
+
+    async def rollback_enroll(self, device_id):
+        """Undo a provisioning enrollment (ceremony abort path).
+
+        Unlike decommission, this does NOT tombstone: a rolled-back ID
+        may be enrolled fresh later. Returns True if an entry existed.
+        """
+        self._check_id(device_id)
+        async with self._lock:
+            return self._entries.pop(bytes(device_id), None) is not None
+
+    async def decommission(self, device_id):
+        """Retire an ID forever: delete the entry + tombstone it.
+
+        Retired IDs are never reassigned (re-enroll of a tombstoned ID
+        refuses). Returns True if an entry existed.
+        """
+        self._check_id(device_id)
+        key = bytes(device_id)
+        async with self._lock:
+            existed = self._entries.pop(key, None) is not None
+            self._tombstones.add(key)
+            return existed
+
+
+class CredentialStore:
+    """Server Kdev custody (B-41.2): AES-GCM under a store master key.
+
+    Role-separated access (PAPER-PARAM policy, enforced here):
+    provisioning may read/write/delete, handshake may read, audit may
+    do nothing (records carry hashes, never keys). Violations raise
+    PermissionError (operator/caller bug, never a protocol outcome).
+    Nonces are explicit caller coins (12 B, derand discipline — tests
+    fixed, prod from servant rng). Entries bind AAD=device-ID (a blob
+    copied under another ID fails closed). Master key held, never
+    logged, never exported (B-41 custody boundary).
+    """
+
+    _ROLES = {
+        "provisioning": frozenset({"read", "write", "delete"}),
+        "handshake": frozenset({"read"}),
+        "audit": frozenset(),
+    }
+
+    def __init__(self, master_key):
+        if not isinstance(master_key, (bytes, bytearray)) or \
+                len(master_key) != 32:
+            raise ValueError("master key must be 32 bytes")
+        self._master = bytes(master_key)
+        self._blobs = {}
+
+    def _need(self, role, op):
+        if role not in self._ROLES or op not in self._ROLES[role]:
+            raise PermissionError(f"role {role!r} may not {op}")
+
+    @staticmethod
+    def _check_id(device_id):
+        if not isinstance(device_id, (bytes, bytearray)) or \
+                len(device_id) != 16:
+            raise ValueError("device_id must be 16 bytes")
+
+    def put(self, device_id, kdev, role, nonce):
+        """Store Kdev (encrypts). Returns True."""
+        self._check_id(device_id)
+        if not isinstance(kdev, (bytes, bytearray)) or len(kdev) != 32:
+            raise ValueError("kdev must be 32 bytes")
+        if not isinstance(nonce, (bytes, bytearray)) or \
+                len(nonce) != 12:
+            raise ValueError("nonce must be 12 bytes")
+        self._need(role, "write")
+        rc, out, _ = _B.run("aead-enc", self._master.hex(),
+                            bytes(nonce).hex(), bytes(device_id).hex(),
+                            bytes(kdev).hex())
+        if rc != 0:
+            raise ValueError("store seal failed")
+        self._blobs[bytes(device_id)] = (
+            bytes(nonce), bytes.fromhex(out[0]), bytes.fromhex(out[1]))
+        return True
+
+    def get(self, device_id, role="handshake"):
+        """Fetch Kdev (decrypts) or None if absent."""
+        self._check_id(device_id)
+        self._need(role, "read")
+        blob = self._blobs.get(bytes(device_id))
+        if blob is None:
+            return None
+        nonce, ct, tag = blob
+        rc, out, _ = _B.run(
+            "aead-dec", self._master.hex(), nonce.hex(),
+            bytes(device_id).hex(), ct.hex(), tag.hex())
+        if rc != 0:
+            raise ValueError("store open failed (tamper/wrong key)")
+        return bytes.fromhex(out[0])
+
+    def delete(self, device_id, role):
+        """Drop an entry. Returns True if one existed."""
+        self._check_id(device_id)
+        self._need(role, "delete")
+        return self._blobs.pop(bytes(device_id), None) is not None

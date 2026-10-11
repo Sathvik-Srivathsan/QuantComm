@@ -100,6 +100,19 @@ async def test_heartbeat_seq_evict_silence():
 
 
 @pytest.mark.asyncio
+async def test_decommission_tombstone():
+    reg = Registry(capacity=4, idle_timeout_s=100)
+    assert await reg.enroll(ID_A, now=0.0) == "ok"
+    assert await reg.decommission(ID_A) is True
+    assert reg.get(ID_A) is None
+    assert await reg.decommission(ID_A) is False
+    # Retired IDs never reassigned (re-enroll refuses forever).
+    assert await reg.enroll(ID_A, now=1.0) == "refuse-tombstoned"
+    assert reg.counters["tombstone_refusals"] == 1
+    assert await reg.enroll(ID_A, now=2.0) == "refuse-tombstoned"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_admits_atomic():
     reg = Registry(capacity=8, idle_timeout_s=100)
     await reg.enroll(ID_A, now=0.0)

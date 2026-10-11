@@ -88,7 +88,20 @@ async def srv_policy(op, ctx, **kw):
     ctx.setdefault("_lock", asyncio.Lock())
     ctx.setdefault("_issued", 0)
     ctx.setdefault("_ahead_alarms", 0)
+    ctx.setdefault("_halted", False)
+    if op == "halt":
+        # Server-key compromise: halt signing (sessions continue).
+        ctx["_halted"] = True
+        log.warning("policy signing halted (compromise)")
+        return "halted", None
+    if op == "resume":
+        # Trust restored via B-41 re-enrollment ceremony (out-of-band).
+        ctx["_halted"] = False
+        log.info("policy signing resumed")
+        return "resumed", None
     if op == "issue":
+        if ctx["_halted"]:
+            return "halted", None
         fields = kw.get("fields")
         sk = kw.get("sk")
         level = kw.get("level")
