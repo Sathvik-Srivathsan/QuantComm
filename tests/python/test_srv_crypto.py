@@ -11,21 +11,15 @@ Never calls `rng` (live entropy) — fixed coins only, by rule.
 """
 import hashlib
 import hmac as hmac_mod
-import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SERVANT = REPO / "build" / "server" / "srv_crypto"
+sys.path.insert(0, str(REPO / "server"))
 
-
-def run(*args):
-    assert SERVANT.exists(), f"servant missing: {SERVANT} (build it)"
-    p = subprocess.run(
-        [str(SERVANT), *args],
-        capture_output=True, text=True, timeout=120,
-    )
-    return p.returncode, p.stdout.split(), p.stderr
+# Single bridge implementation (test-local duplicate removed on audit:
+# it hardcoded the Linux ELF path and broke every native run).
+from qcsrv._bridge import run  # noqa: E402
 
 
 def hx(b: bytes) -> str:

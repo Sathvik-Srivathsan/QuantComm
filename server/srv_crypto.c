@@ -487,6 +487,38 @@ int main(int argc, char **argv) {
         return rc;
     }
 
+    /* ---- sizes (level table live from the adapters — callers never
+     * hardcode sizes; B-42/B-43 use this too) ---- */
+    if (strcmp(argv[1], "sizes") == 0) {
+        int ok;
+        NEED(4);
+        if (strcmp(argv[2], "kem") == 0) {
+            qc_kem_level lv = kem_level(argv[3], &ok);
+            if (!ok) {
+                return usage("bad level (512/768/1024)");
+            }
+            /* Three values like dsa (ss is FIPS-fixed 32, carried
+             * by the KDF layout, not the level table). %lu with casts:
+             * MSVCRT printf never learned %zu (audit: MinGW -Werror
+             * flags it); values are bytes counts, never wide. */
+            printf("%lu %lu %lu\n",
+                   (unsigned long)qc_kem_pk_bytes(lv),
+                   (unsigned long)qc_kem_sk_bytes(lv),
+                   (unsigned long)qc_kem_ct_bytes(lv));
+            return 0;
+        }
+        if (strcmp(argv[2], "dsa") == 0) {
+            qc_dsa_level lv = dsa_level(argv[3], &ok);
+            if (!ok) {
+                return usage("bad level (44/65/87)");
+            }
+            printf("%zu %zu %zu\n", qc_dsa_pk_bytes(lv),
+                   qc_dsa_sk_bytes(lv), qc_dsa_sig_bytes(lv));
+            return 0;
+        }
+        return usage("sizes kem|dsa <level>");
+    }
+
     /* ---- live entropy (prod path only; tests use fixed coins) ---- */
     if (strcmp(argv[1], "rng") == 0) {
         size_t want = 0;

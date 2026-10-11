@@ -30,6 +30,12 @@ class RegistryEntry:
     ratchet_r: int = 0
     manifest_ver: int = 0
     audit_seq: int = 0
+    # Handshake replay bar + ratchet chain (chunk-2 additive fields,
+    # defaults keep old constructions valid; epoch_last stays the
+    # liveness/attestation horizon, hs_* gate handshakes only).
+    hs_epoch: int = 0
+    hs_counter: int = 0
+    r_chain: bytes = b""
     config: str = "E2E"
     blacklisted: bool = False
     last_contact: float = 0.0
