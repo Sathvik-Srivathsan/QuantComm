@@ -38,6 +38,13 @@ jobs:
         with:
           python-version: "3.11"
       - name: install test deps
-        run: python -m pip install pytest
+        run: python -m pip install pytest pytest-asyncio cryptography
+      # The servant bridge tests need build/server/srv_crypto (targeted
+      # build only — not the world — so this job stays fast; the C job
+      # still owns the full build). Tests FAIL without it, never skip.
+      - name: build crypto servant
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --target srv_crypto -j2
       - name: test
         run: python -m pytest tests/python -q
