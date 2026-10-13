@@ -30,6 +30,13 @@ jobs:
       - name: floor-bypass exclusion scan
         run: |
           ! grep -rni --include='*.c' --include='*.h' -e 'floor[_ ]*bypass' -e 'bypass[_ ]*floor' crypto/ core/ server/ gateway/
+      # Sim determinism scan (B-43.1): wall-clock reads, threads, and
+      # unseeded random must never enter sim/qcsim (banned by
+      # construction); os.urandom lives only in the RNGStreams seeder.
+      - name: sim banned-call scan
+        run: |
+          ! grep -rn --include='*.py' -e 'import time' -e 'from time import' -e 'import datetime' -e 'import threading' -e 'import random' sim/qcsim/
+          test $(grep -rn --include='*.py' -e 'os.urandom(' sim/qcsim/ | wc -l) -eq 1
   python:
     runs-on: ubuntu-latest
     steps:
