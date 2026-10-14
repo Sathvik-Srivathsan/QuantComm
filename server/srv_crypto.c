@@ -34,6 +34,7 @@
 #include "qc_rng.h"
 #include "qc_sha256.h"
 #include "qc_zeroize.h"
+#include "srv_ctl.h" /* controller verbs (own audit surface in srv_ctl.c) */
 
 #define ARG_CAP 65536
 
@@ -148,6 +149,15 @@ int main(int argc, char **argv) {
             return usage("wrong arg count");         \
         }                                            \
     } while (0)
+
+    /* ---- controller verbs (delegated; frozen crypto below) ---- */
+    if (argc >= 2 && argv[1][0] == 'c' && argv[1][1] == 't' &&
+        argv[1][2] == 'l' && argv[1][3] == '-') {
+        int ctl_rc = srv_ctl_main(argc, argv);
+        if (ctl_rc >= 0) {
+            return ctl_rc;
+        }
+    }
 
     /* ---- hashes ---- */
     if (strcmp(argv[1], "sha256") == 0) {
