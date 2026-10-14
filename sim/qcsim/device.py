@@ -30,6 +30,11 @@ never silent; tech-lead review at phase gate gives accept-or-rework):
     not sensor sampling); energy from caller params (ASSUMED B-33
     priors); controller floor/risk/governor policies consumed as
     trace-supplied inputs (S/R/Q fields), not re-solved per step.
+  b43-device-2: per-vector `decide` calls through sim/qcsim/control.py
+    (frozen B-30-B-35 via the servant composite verb): staged profile
+    + band recorded per step; S/R/Q still carried as telemetry
+    payloads; mapping S->increments/Q->msg-rate documented in
+    control.py; handshake + telemetry path unchanged.
 """
 import subprocess
 from pathlib import Path
@@ -38,7 +43,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .streams import RNGStreams
 
-ASSUMPTION_VERSION = "b43-device-1"
+ASSUMPTION_VERSION = "b43-device-2"
 LEVEL = 768
 
 
@@ -102,6 +107,7 @@ class DeviceModel:
         from qcsrv import Registry
         from qcsrv.handshake import srv_handshake
         from qcsrv.ingress import srv_ingest
+        from qcsim.control import ControlLoop
         import asyncio
 
         salt = streams.next_bytes("device", 8).hex()
@@ -143,7 +149,15 @@ class DeviceModel:
             chain = okm[64:96]
             energy = self._energy["e_hs"]
             ok = 0
+            ctl = ControlLoop()
+            ctl.prime(trace["vectors"][0])
+            hint_ts = {e["ts"] for e in trace.get("events", [])
+                       if e.get("type") == 0}
+            trail = []
             for ctr, vec in enumerate(trace["vectors"]):
+                dec = ctl.step(vec, hint=1 if vec["ts"] in hint_ts else 0)
+                trail.append({"staged": dec["staged"], "band": dec["band"],
+                              "rc": dec["rc"]})
                 pt = b"up-%d" % ctr
                 out = _srv("hkdf-expand", chain.hex(),
                            _hx(b"ratchet" + (ctr + 1).to_bytes(8, "big")),
@@ -169,6 +183,8 @@ class DeviceModel:
                     "trace": trace["trace_id"], "handshake": "m2",
                     "frames": len(trace["vectors"]), "ok": ok,
                     "energy_j": round(energy, 9), "seed_salt": salt,
-                    "assumptions": self.assumptions}
+                    "assumptions": self.assumptions,
+                    "decisions": trail,
+                    "ctl": dict(ctl.counters)}
 
         return asyncio.run(go())

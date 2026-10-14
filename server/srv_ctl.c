@@ -2405,7 +2405,7 @@ static int verb_decide(int argc, char **argv) {
         cands[i].ehat_sec = qc_ehat_sec(&n, &ecoeff);
     }
     ctl_wire_hooks(&a.opt, &hctx, &a.gov, dtw);
-    rc = qc_opt_decide(&a.opt, feas_n == 0 ? NULL : cands, feas_n,
+    rc = qc_opt_decide(&a.opt, cands, feas_n,
                        lambda, (double)qc_gov_tau(&a.gov), margin, now);
     memset(&staged_out, 0, sizeof(staged_out));
     staged = qc_opt_staged(&a.opt, &staged_out);

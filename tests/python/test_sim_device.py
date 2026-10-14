@@ -18,7 +18,7 @@ SEED = "0123456789abcdef0123456789abcdef"
 DEV_ID = bytes(range(16))
 KDEV = bytes([0xD0 + (i % 16) for i in range(32)])
 SYSTEM = {"system_id": "S5", "controller": True, "floor_bypass": False,
-          "backend": "host-build-b43-device-1",
+          "backend": "host-build-b43-device-2",
           "kind": "adaptive", "profile": {}}
 
 
@@ -42,7 +42,7 @@ def test_handshake_and_telemetry_loop():
     assert metrics["handshake"] == "m2"
     assert metrics["frames"] == 6 and metrics["ok"] == 6
     assert metrics["energy_j"] == 1.5 + 6 * 0.1
-    assert metrics["assumptions"] == "b43-device-1"
+    assert metrics["assumptions"] == "b43-device-2"
     assert model.counters["handshakes"] == 1
     assert model.counters["frames_ok"] == 6
 
