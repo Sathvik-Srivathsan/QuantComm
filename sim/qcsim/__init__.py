@@ -1,9 +1,9 @@
 """qcsim — deterministic simulator (B-43) plus baselines (B-44).
 
-Thirteen public names (surface test pins this exactly — growth is
+Fourteen public names (surface test pins this exactly — growth is
 deliberate per change, never silent): SimClock, RNGStreams,
 check_sim_tag, generate_traces, ExperimentRunner, parse_scenario,
-play_scenario, NetworkModel (B-43) plus baseline_systems,
+play_scenario, NetworkModel, DeviceModel (B-43) plus baseline_systems,
 check_comparison, select_anchor, check_oracle_bound, h3_input_record
 (B-44).
 
@@ -23,6 +23,7 @@ seeder, threads, unseeded random (import-time surface + grep CI gate
 + determinism self-test).
 """
 from .clock import SimClock
+from .device import DeviceModel
 from .network import NetworkModel
 from .runner import ExperimentRunner
 from .scenarios import parse_scenario, play_scenario
@@ -34,6 +35,7 @@ from .validity import (check_comparison, check_oracle_bound,
                        h3_input_record, select_anchor)
 
 __all__ = [
+    "DeviceModel",
     "ExperimentRunner",
     "NetworkModel",
     "RNGStreams",
