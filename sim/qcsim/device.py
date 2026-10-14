@@ -68,6 +68,78 @@ def _coins(*vals):
     return bytes(vals * 32)[:32]
 
 
+def _sim(*args):
+    exe = _repo() / "build" / "server" / "srv_crypto"
+    p = subprocess.run([str(exe), *[str(a) for a in args]],
+                       capture_output=True, text=True, timeout=180)
+    if p.returncode != 0:
+        raise RuntimeError(f"servant failed: {args[0]}: "
+                           f"{p.stderr[:200]}")
+    return p.stdout.split()
+
+
+def _batch_new():
+    out = _sim("sim-batch-new")
+    assert out[0] == "0" and len(out) == 2, out
+    return out[1]
+
+
+def _batch_insert(blob, pt, cls, now=200):
+    out = _sim("sim-batch-insert", blob, pt.hex(), str(cls), str(int(now)))
+    assert out[0] == "0", out  # sim telemetry is C0/C1, tiny: never
+    return out[1]              # FULL/C2_BYPASS (fail loud otherwise)
+
+
+def _batch_ready(blob, nb, tc0=60, tc1=300, now=200):
+    out = _sim("sim-batch-ready", blob, str(int(nb)), str(int(tc0)),
+               str(int(tc1)), str(int(now)))
+    return out[0]  # "0" OPEN / "1" COUNT / "2" LATENCY
+
+
+def _batch_pop(blob, cap=4096, now=200):
+    out = _sim("sim-batch-pop", blob, str(int(cap)), str(int(now)))
+    rc = int(out[0])
+    if rc != 0:
+        return rc, out[1], None
+    pt = bytes.fromhex(out[2])
+    return rc, out[1], (pt, int(out[3]), int(out[4]))
+
+
+def _batch_count(blob):
+    out = _sim("sim-batch-count", blob)
+    return int(out[0])
+
+
+def _merkle_leaf(cls, counter, reading):
+    out = _sim("sim-merkle-leaf", str(cls), str(counter),
+               reading.hex())
+    return out[0]
+
+
+def _merkle_root(leaves):
+    assert leaves, "never root an empty batch (caller policy)"
+    out = _sim("sim-merkle-root", "".join(leaves))
+    return out[0]
+
+
+def _mft_check():
+    """Fixture manifest roundtrip (deterministic): keypair, make v1,
+    sign, enroll, verify-apply. Returns the verify rc (0 == applied)."""
+    seed = bytes([0xA5]) * 32
+    out = _srv("dsa-keypair", "65", seed.hex())
+    pk, sk = bytes.fromhex(out[0]), bytes.fromhex(out[1])
+    out = _sim("sim-mft-make", "1", "000101020203", "07", "100", "60",
+               "50", "none")
+    body = out[0]
+    out = _srv("dsa-sign", "65", sk.hex(), body,
+               (bytes([0x1B]) * 32).hex())
+    sig = out[0]
+    out = _sim("sim-mft-init", "65", pk.hex())
+    assert out[0] == "0", out
+    out = _sim("sim-mft-verify", out[1], body, sig, "5000")
+    return int(out[0])
+
+
 class DeviceModel:
     """Handshake once, then telemetry per trace vector (see module doc)."""
 
@@ -148,12 +220,18 @@ class DeviceModel:
             assert bytes.fromhex(out[0]) == mac
             chain = okm[64:96]
             energy = self._energy["e_hs"]
+            mft_rc = _mft_check()
             ok = 0
             ctl = ControlLoop()
             ctl.prime(trace["vectors"][0])
             hint_ts = {e["ts"] for e in trace.get("events", [])
                        if e.get("type") == 0}
             trail = []
+            batch = _batch_new()
+            rks = {}
+            leaves = []
+            roots = []
+            batches = 0
             for ctr, vec in enumerate(trace["vectors"]):
                 dec = ctl.step(vec, hint=1 if vec["ts"] in hint_ts else 0)
                 trail.append({"staged": dec["staged"], "band": dec["band"],
@@ -163,21 +241,70 @@ class DeviceModel:
                            _hx(b"ratchet" + (ctr + 1).to_bytes(8, "big")),
                            "96")
                 chain = bytes.fromhex(out[0])[0:32]
-                rk = bytes.fromhex(out[0])[32:64]
-                hdr = (self._dev_id + bytes([0, 1]) +
-                       ctr.to_bytes(8, "big") + bytes(32) +
-                       (0).to_bytes(16))
-                nonce = (1).to_bytes(4, "big") + ctr.to_bytes(8, "big")
-                ct = AESGCM(rk).encrypt(nonce, pt, hdr)
-                frame = hdr + len(pt).to_bytes(4, "big") + ct
-                code, reading = await srv_ingest(
-                    frame, ctx, direction="c2s", now=200.0 + ctr)
-                if code == "ok" and reading["payload"] == pt:
-                    ok += 1
-                    self.counters["frames_ok"] += 1
-                    energy += self._energy["e_frame"]
-                else:
-                    self.counters["frames_dropped"] += 1
+                rks[ctr] = bytes.fromhex(out[0])[32:64]
+                batch = _batch_insert(batch, pt, vec["S"])
+                nb = dec["nb"] if dec["nb"] is not None else 8
+                # TEST-BOUNDS tc0/tc1 (60/300, test values, labeled —
+                # B-31 values these; the mechanism, not the numbers,
+                # is what's under test here).
+                if _batch_ready(batch, nb, 60, 300,
+                                200.0 + ctr) != "0":
+                    mark = len(leaves)
+                    while _batch_count(batch) > 0:
+                        rc, batch, got = _batch_pop(batch)
+                        assert got is not None, "count>0 but pop failed"
+                        p2, cls2, _age = got
+                        # Self-describing payloads (up-<ctr>) recover
+                        # the vector's key/counter — no parallel FIFO
+                        # to desynchronize (asserted on every pop).
+                        c2 = int(p2.split(b"-")[1])
+                        assert p2 == b"up-%d" % c2, (p2, c2)
+                        hdr = (self._dev_id + bytes([0, 1]) +
+                               c2.to_bytes(8, "big") + bytes(32) +
+                               (0).to_bytes(16))
+                        nonce = ((1).to_bytes(4, "big") +
+                                 c2.to_bytes(8, "big"))
+                        ct = AESGCM(rks[c2]).encrypt(nonce, p2, hdr)
+                        frame = (hdr + len(p2).to_bytes(4, "big") + ct)
+                        code, reading = await srv_ingest(
+                            frame, ctx, direction="c2s", now=200.0 + c2)
+                        leaves.append(_merkle_leaf(cls2, c2, p2))
+                        if code == "ok" and reading["payload"] == p2:
+                            ok += 1
+                            self.counters["frames_ok"] += 1
+                            energy += self._energy["e_frame"]
+                        else:
+                            self.counters["frames_dropped"] += 1
+                    roots.append(_merkle_root(leaves[mark:]))
+                    batches += 1
+            # End-of-run flush (session-close semantic): undrained
+            # readings must still flow, preserving ok == frames.
+            if _batch_count(batch) > 0:
+                mark = len(leaves)
+                while _batch_count(batch) > 0:
+                    rc, batch, got = _batch_pop(batch)
+                    assert got is not None, "count>0 but pop failed"
+                    p2, cls2, _age = got
+                    c2 = int(p2.split(b"-")[1])
+                    assert p2 == b"up-%d" % c2, (p2, c2)
+                    hdr = (self._dev_id + bytes([0, 1]) +
+                           c2.to_bytes(8, "big") + bytes(32) +
+                           (0).to_bytes(16))
+                    nonce = ((1).to_bytes(4, "big") +
+                             c2.to_bytes(8, "big"))
+                    ct = AESGCM(rks[c2]).encrypt(nonce, p2, hdr)
+                    frame = hdr + len(p2).to_bytes(4, "big") + ct
+                    code, reading = await srv_ingest(
+                        frame, ctx, direction="c2s", now=200.0 + c2)
+                    leaves.append(_merkle_leaf(cls2, c2, p2))
+                    if code == "ok" and reading["payload"] == p2:
+                        ok += 1
+                        self.counters["frames_ok"] += 1
+                        energy += self._energy["e_frame"]
+                    else:
+                        self.counters["frames_dropped"] += 1
+                roots.append(_merkle_root(leaves[mark:]))
+                batches += 1
             # metrics (functional dispositions + ASSUMED-model energy)
             return {"system": system["system_id"],
                     "trace": trace["trace_id"], "handshake": "m2",
@@ -185,6 +312,7 @@ class DeviceModel:
                     "energy_j": round(energy, 9), "seed_salt": salt,
                     "assumptions": self.assumptions,
                     "decisions": trail,
-                    "ctl": dict(ctl.counters)}
+                    "ctl": dict(ctl.counters),
+                    "batches": batches, "roots": roots, "mft": mft_rc}
 
         return asyncio.run(go())

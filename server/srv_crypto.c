@@ -35,6 +35,7 @@
 #include "qc_sha256.h"
 #include "qc_zeroize.h"
 #include "srv_ctl.h" /* controller verbs (own audit surface in srv_ctl.c) */
+#include "srv_sim.h" /* sim verbs: batch/Merkle/manifest (srv_sim.c) */
 
 #define ARG_CAP 65536
 
@@ -156,6 +157,14 @@ int main(int argc, char **argv) {
         int ctl_rc = srv_ctl_main(argc, argv);
         if (ctl_rc >= 0) {
             return ctl_rc;
+        }
+    }
+
+    /* ---- sim verbs (delegated; batch/Merkle/manifest) ---- */
+    if (argc >= 2 && strncmp(argv[1], "sim-", 4) == 0) {
+        int sim_rc = srv_sim_main(argc, argv);
+        if (sim_rc >= 0) {
+            return sim_rc;
         }
     }
 

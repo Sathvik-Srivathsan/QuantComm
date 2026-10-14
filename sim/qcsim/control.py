@@ -160,8 +160,10 @@ class ControlLoop:
         code, blob = out[0], out[1]
         self._blob = blob
         staged, band = None, None
+        nb = None
         if code == "0":
             staged = int(bytes.fromhex(out[3])[0])
+            nb = int(bytes.fromhex(out[3])[13])
         elif code == "1":
             pass
         elif code == "2":
@@ -169,6 +171,7 @@ class ControlLoop:
         elif code == "3":
             self.counters["sheds"] += 1
             staged = int(bytes.fromhex(out[3])[0])
+            nb = int(bytes.fromhex(out[3])[13])
         elif code == "4":
             self.counters["holds"] += 1
         elif code == "5":
@@ -182,5 +185,5 @@ class ControlLoop:
         band = int(bytes.fromhex(blob)[200:201].hex(), 16)
         if band == 1:
             self.counters["high_steps"] += 1
-        return {"rc": code, "staged": staged, "band": band,
+        return {"rc": code, "staged": staged, "band": band, "nb": nb,
                 "raw": out}

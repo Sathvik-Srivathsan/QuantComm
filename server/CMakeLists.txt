@@ -5,7 +5,11 @@
 add_executable(srv_crypto
     srv_crypto.c
     srv_ctl.c
+    srv_sim.c
     ${CMAKE_SOURCE_DIR}/core/qc_state.c
+    ${CMAKE_SOURCE_DIR}/core/qc_batch.c
+    ${CMAKE_SOURCE_DIR}/core/qc_merkle.c
+    ${CMAKE_SOURCE_DIR}/core/qc_manifest.c
     ${CMAKE_SOURCE_DIR}/core/qc_floor.c
     ${CMAKE_SOURCE_DIR}/core/qc_risk.c
     ${CMAKE_SOURCE_DIR}/core/qc_energy.c

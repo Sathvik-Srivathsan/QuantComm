@@ -25,6 +25,10 @@ seeder, threads, unseeded random (import-time surface + grep CI gate
 from .clock import SimClock
 from .control import ControlLoop
 from .device import DeviceModel
+from ._guard import check_package as _check_package
+from pathlib import Path as _Path
+
+_check_package(_Path(__file__).resolve().parent)
 from .network import NetworkModel
 from .runner import ExperimentRunner
 from .scenarios import parse_scenario, play_scenario
