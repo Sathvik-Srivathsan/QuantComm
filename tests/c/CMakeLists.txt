@@ -154,6 +154,18 @@ target_include_directories(test_prod_rng PRIVATE
 target_link_libraries(test_prod_rng PRIVATE unity)
 add_test(NAME c_prod_rng COMMAND test_prod_rng)
 
+# B-50.3 entropy health (IID/non-IID). Links the REAL entropy TU (live
+# getrandom) exactly like test_prod_rng above - same rationale, same
+# separation from the test injector. qc_health.c is listed directly rather
+# than as a library: it is gate-side evaluation, not a production TU.
+add_executable(test_entropy_health test_entropy_health.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_health.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_entropy.c)
+target_include_directories(test_entropy_health PRIVATE
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_entropy_health PRIVATE unity)
+add_test(NAME c_entropy_health COMMAND test_entropy_health)
+
 # Store links HKDF + AEAD lib (wrap + file MAC) + zeroize.
 add_executable(test_store test_store.c
     ${CMAKE_SOURCE_DIR}/core/qc_store.c

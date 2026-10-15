@@ -32,9 +32,24 @@ version); stats rows are (manifest ID, system ID, trace ID, metrics).
 
 import json
 import subprocess
+from pathlib import Path
 
+from . import gate
 from .clock import SimClock
 from .simtag import require_sim_tag
+
+
+class GateRefusal(RuntimeError):
+    """E0 gate refused the run (B-50.4). Distinct type so campaign code
+    cannot accidentally treat a refusal as an empty result set."""
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _build_dir() -> Path:
+    return _repo_root() / "build"
 from .streams import RNGStreams
 
 MODES = ("E5", "E6", "E7", "E10", "E11")
@@ -102,12 +117,37 @@ class ExperimentRunner:
         self._code = code_hash or _code_hash()
         self.counters = {"trials": 0, "retained": 0, "discarded": 0}
 
-    def run(self, systems, traces, runs=10, scenario=None):
-        """Run systems over traces. Returns (manifests, stats)."""
+    def run(self, systems, traces, runs=10, scenario=None,
+            gate_id=None, require_gate=False):
+        """Run systems over traces. Returns (manifests, stats).
+
+        E0 gate preflight (B-50.4): with `require_gate=True` (or a named
+        `gate_id`) every run is refused unless a green gate record for THIS
+        build exists. Refusal raises `GateRefusal` - it is never swallowed
+        into an empty result set.
+
+        Why not always-on: the runner is also the unit-test subject for the
+        sim itself, which has no business minting gates. That is why the
+        opt-out is a NAMED parameter rather than a default, and why every
+        manifest records `gate_preflight`, so a run that skipped the check
+        is visible in its own output instead of being inferred. Campaign
+        runners (B-52) must pass require_gate=True.
+        """
         if not isinstance(runs, int) or runs < 10:
             raise ValueError("runs must be an int >= 10")
         if not systems or not traces:
             raise ValueError("systems and traces must be nonempty")
+        if require_gate or gate_id:
+            ok, why = gate.preflight(gate_id, _build_dir(), _repo_root())
+            if not ok:
+                raise GateRefusal(why)
+            gate_state = "verified"
+            resolved_gate = json.loads(
+                (_build_dir() / gate.GATE_DIRNAME / gate.GATE_MANIFEST)
+                .read_text(encoding="utf-8"))["gate_id"]
+        else:
+            gate_state = "not-required"
+            resolved_gate = None
         for system in systems:
             _check_system(system)
         backends = {s["backend"] for s in systems}
@@ -148,6 +188,8 @@ class ExperimentRunner:
                     "backend": system["backend"],
                     "assumption_version": self._assumption,
                     "output_tag": self._tag,
+                    "e0_gate_id": resolved_gate,
+                    "gate_preflight": gate_state,
                 }
                 # JSON-serializability is load-bearing (retention contract).
                 json.dumps(manifest)
