@@ -37,6 +37,14 @@ jobs:
         run: |
           ! grep -rn --include='*.py' -e 'import time' -e 'from time import' -e 'import datetime' -e 'import threading' -e 'import random' sim/qcsim/
           test $(grep -rn --include='*.py' -e 'os.urandom(' sim/qcsim/ | wc -l) -eq 1
+      # E1 producer/consumer contract (B-51.5). c_e1_smoke proves the
+      # benchmark runs, but ctest discards its stdout - so nothing checked
+      # that the rows it emits satisfy the DRIVER's schema. Producer and
+      # consumer were authored together, so nothing outside that author had
+      # verified they agree, and the stack-metric key was renamed twice in
+      # the same chunk. This runs the real binary through the real parser.
+      - name: E1 producer/consumer contract check
+        run: python3 tools/e1_smoke_check.py
   python:
     runs-on: ubuntu-latest
     steps:

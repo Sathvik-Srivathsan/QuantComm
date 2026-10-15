@@ -14,3 +14,5 @@ add_subdirectory(third_party/unity)
 add_subdirectory(crypto)
 add_subdirectory(tests/c)
 add_subdirectory(server)
+# B-51 campaign tooling (e1_bench). Added after the libraries it links.
+add_subdirectory(tools)

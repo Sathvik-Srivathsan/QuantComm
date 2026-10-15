@@ -166,6 +166,16 @@ target_include_directories(test_entropy_health PRIVATE
 target_link_libraries(test_entropy_health PRIVATE unity)
 add_test(NAME c_entropy_health COMMAND test_entropy_health)
 
+# B-51.3 profiling primitives (stack paint / heap hooks / cycles). The
+# instrument's own tests come before any campaign uses it: an instrument
+# that always reads zero would make E1 look clean for the wrong reason.
+add_executable(test_prof test_prof.c
+    ${CMAKE_SOURCE_DIR}/crypto/qc_prof.c)
+target_include_directories(test_prof PRIVATE
+    ${CMAKE_SOURCE_DIR}/crypto)
+target_link_libraries(test_prof PRIVATE unity)
+add_test(NAME c_prof COMMAND test_prof)
+
 # Store links HKDF + AEAD lib (wrap + file MAC) + zeroize.
 add_executable(test_store test_store.c
     ${CMAKE_SOURCE_DIR}/core/qc_store.c
