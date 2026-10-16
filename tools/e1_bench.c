@@ -193,7 +193,7 @@ static void emit(const e1_cell *c, const char *gate_hint) {
            "\"ns_mean\":%llu,\"ns_p50\":%llu,\"ns_p95\":%llu,"
            "\"ns_p99\":%llu,\"ns_max\":%llu,"
            "\"cycles_p50\":%llu,"
-           "\"heap_live_bytes\":%zu,\"cycle_source\":\"%s\","
+           "\"heap_live_bytes\":\"pending-verification\",\"cycle_source\":\"%s\","
            "\"stack_metric\":\"pending-verification\","
            "\"energy_field\":\"absent-by-design\",\"record\":\"%s\"}\n",
            c->op, c->level, c->payload, c->n, warmup_count(c->n), c->loops,
@@ -203,7 +203,7 @@ static void emit(const e1_cell *c, const char *gate_hint) {
            (unsigned long long)pct(ns, c->n, 99),
            (unsigned long long)ns[c->n - 1],
            (unsigned long long)pct(cy, c->n, 50),
-           c->heap_live, QC_PROF_CYCLE_SOURCE, gate_hint);
+           QC_PROF_CYCLE_SOURCE, gate_hint);
     free(ns);
     free(cy);
 }

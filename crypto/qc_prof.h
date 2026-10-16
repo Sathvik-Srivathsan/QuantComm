@@ -1,10 +1,10 @@
 /* qc_prof.h - host profiling primitives (plan B-51.3 metrics).
  *
- * Supplies two of the five B-51.3 metric families that need C-side
- * instrumentation:
- *   - heap delta, via hooks the caller drives
- *   - cycle count, via rdtsc with a fence
- *
+ * Supplies host cycle and heap measurement for B-51.3. Of the five B-51.3
+ * metric families (time, cycles, stack high-water, heap delta, flash per
+ * track), TIME is measured by the bench itself (tools/e1_bench.c), and
+ * of the two families this header owns, ONLY CYCLES IS CURRENTLY
+ * REAL - heap is pending and stack/flash are absent. See below.
  * STACK HIGH-WATER IS DELIBERATELY ABSENT. Paint instrumentation needs a
  * buffer positioned between the caller and the callee, and two attempts
  * got that wrong in ways that fail SILENTLY rather than loudly:
@@ -22,24 +22,47 @@
  * a dedicated measurement TU, and - critically - a machine that can build
  * and RUN it, which this host currently cannot.
  *
- * TWO MORE NAMED DEFERRALS (B-51.3 metric families not built here):
+ * THREE NAMED DEFERRALS / PENDING COLUMNS (B-51.3 metric families not built:
+ *   - PERF-EVENT CYCLES - DECIDED (B-51-gaps, 2026-10-16): rdtsc-with-fence is
+ *     ACCEPTED as the PRIMARY cycle source for host E1, permanently. B-51.3
+ *     names perf primary with rdtsc as fallback; we take the fallback
+ *     deliberately, for TWO factual reasons: (1) perf_event_open is
+ *     Linux-only, and E1 must be reproducible on the Windows dev host AND
+ *     on Linux CI - not both are perf-capable, and a metric that cannot run
+ *     where the dataset is produced cannot be re-verified later; (2) rdtsc
+ *     WITH a fence is a correctly ordered counter here (lfence;rdtsc;lfence)
+ *     and every dataset records cycles_source="rdtsc-fenced" so no reader can
+ *     mistake these for perf numbers.
+ *     WITHDRAWN (recorded, not deleted, so the reasoning survives): an earlier
+ *     version also argued perf could not resolve this matrix's short calls.
+ *     That was WRONG - perf_event_open in COUNTING mode, which is what B-51.3
+ *     asks for, has no sampling granularity limit; multiplexing only arises
+ *     with more events open than PMU counters. The quoted op-duration range
+ *     was never measured and disagreed with the bench's own figure. Reasons
+ *     (1) and (2) alone justify the decision.
+ *     HONEST LIMIT: cycles_source names the METHOD; it does not VALIDATE the
+ *     counter. There is no TSC-invariant check (no invariant_tsc /
+ *     nonstop_tsc probe) anywhere in the repo, so a host with a
+ *     non-invariant TSC would yield plausible but untrustworthy cycles with
+ *     nothing flagging it. The probe is owed before any E1 dataset is
+ *     authoritative; until then cycle columns are ORDER-OF-MAGNITUDE only.
+ *     ESP32 has no TSC at all: target cycle instrumentation is B-60 (GPIO
+ *     event hooks) / B-62 (firmware reporting), separate from this decision.
+ *   - HEAP DELTA IS ALSO PENDING (blind audit 2026-10-16, found AFTER the E1
+ *     dataset shape was already wrong): qc_heap_note_alloc/qc_heap_note_free
+ *     have ZERO production callers - nothing installs the allocator hooks,
+ *     because allocation happens inside vendored mlkem-native/mldsa-native
+ *     whose allocator we do not intercept. So qc_heap_stat_get().live_bytes
+ *     is unconditionally 0, and E1 WAS emitting that 0 as heap_live_bytes -
+ *     which reads as a measurement of "this operation allocates nothing".
+ *     That is false and violates the principle above in writing. Rows now
+ *     emit the string "pending-verification", exactly like stack. An
+ *     allocator interceptor is owed; until then there is NO heap column.
  *   - FLASH PER TRACK: linked-binary size per track, via linker-map diff
  *     against a no-crypto baseline. Owner: B-62 (the rig; size is a target
  *     measurement, not a host one). Needs a baseline link target first.
- *   - PERF-EVENT CYCLES: B-51.3 names perf-event cycles as primary with
- *     rdtsc-with-fence as the fallback. This build uses the rdtsc path and
- *     records `cycles_source: "rdtsc-fenced"` per dataset so the substitution
- *     is visible in the data rather than assumed. Owner: B-60 (target).
- * Both are recorded rather than silently absent; neither is safe to fake
- * with zeros or a host stand-in.
- *
- * Why C-side at all: B-51.1 requires measurements taken THROUGH the
- * B-10/B-11/B-12 adapter entry points, so the number must come from the
- * same process that runs the primitive. Timing across a subprocess
- * boundary would charge process setup to every sample.
- *
- * HOST ONLY. None of this ships to the target: B-60 owns the GPIO-aligned
- * event instrumentation there, and B-62 owns the rig.
+ * Recorded rather than silently absent; none is safe to fake with zeros or
+ * a host stand-in.
  */
 #ifndef QC_PROF_H
 #define QC_PROF_H
@@ -50,8 +73,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ---- heap delta -------------------------------------------------------- */
 
 typedef struct {
     size_t live_bytes;
