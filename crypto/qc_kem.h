@@ -64,6 +64,14 @@ int qc_kem_decaps(qc_kem_level level,
                   uint8_t ss[QC_KEM_SS_BYTES],
                   const uint8_t *ct, const uint8_t *sk);
 
+/* Backend-rc -> QC_KEM_* translation, single source of truth.
+ * Exposed so the mapping is directly testable: MLK_ERR_PCT_FAIL is only
+ * raised when MLK_CONFIG_KEYGEN_PCT is enabled, so a test cannot provoke
+ * it through the public API. Callers never need this — keygen/encaps/
+ * decaps apply it internally. INTERNAL means "backend fault": a caller must
+ * not be able to distinguish it from a bad-key rejection. */
+int qc_kem_map_backend_rc(int backend_rc);
+
 /* Size queries (for callers sizing buffers). Returns 0 for bad level. */
 size_t qc_kem_pk_bytes(qc_kem_level level);
 size_t qc_kem_sk_bytes(qc_kem_level level);

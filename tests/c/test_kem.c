@@ -213,11 +213,54 @@ static void test_free_wrappers(void) {
     }
 }
 
+/* The backend-rc -> QC_KEM_* boundary is the single place an mlkem-native
+ * code becomes a public enum. Its forward-compat property is what matters:
+ * a code this build has never seen must land on INTERNAL, never BAD_KEY,
+ * because BAD_KEY is a claim about the caller's/peer's key being wrong.
+ * (The legacy MLK_ERR_FAIL aggregate, and MLK_ERR_PCT_FAIL — raised only
+ * under MLK_CONFIG_KEYGEN_PCT, which this build disables — are both
+ * unreachable through the public API here, so they cannot be provoked by
+ * calling it. They travel the SAME default arm this test drives, which is
+ * exactly why the default arm is the thing under test.)
+ * The INVALID_PK / INVALID_SK -> BAD_KEY arms are already covered
+ * end-to-end by test_bad_pk / test_bad_sk through the public API.
+ * The backend header is deliberately NOT included here: CMake keeps the
+ * mlkem include dir PRIVATE so no backend type leaks past the adapter. */
+static void test_backend_rc_mapping(void) {
+    TEST_ASSERT_EQUAL_INT(QC_KEM_OK, qc_kem_map_backend_rc(0));
+
+    /* Every mlkem-native error code is NEGATIVE, so the negative region is
+     * where a real code lives. Sweep it: NO negative value may map to
+     * QC_KEM_OK. This is the guard that catches the defect this function
+     * was written to prevent - a fault code grouped into the success arm,
+     * which would hand a caller unusable keys with a success verdict.
+     * (An earlier revision of this mapping did exactly that, and neither
+     * CI nor this test caught it until manual review of the landed code.)
+     * Real backend constants are deliberately NOT named here: CMake keeps
+     * the mlkem include dir PRIVATE, and hardcoding its values would be
+     * unverifiable magic numbers that break silently on a renumber.
+     * Sweeping the region tests the property instead of the values. */
+    for (int rc = -1; rc >= -8; rc--) {
+        int mapped = qc_kem_map_backend_rc(rc);
+        TEST_ASSERT_TRUE_MESSAGE(mapped != QC_KEM_OK,
+                                 "negative backend code mapped to success");
+        /* An unknown code must not be reported as a key fault either:
+         * BAD_KEY is a claim about the caller's/peer's key. */
+        if (rc != -4 && rc != -5) {  /* INVALID_PK / INVALID_SK are keys */
+            TEST_ASSERT_EQUAL_INT(QC_KEM_INTERNAL, mapped);
+        }
+    }
+
+    /* Unseen positive code: internal by default, never BAD_KEY. */
+    TEST_ASSERT_EQUAL_INT(QC_KEM_INTERNAL, qc_kem_map_backend_rc(9999));
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_backend_rc_mapping);
     RUN_TEST(test_kat_512);
     RUN_TEST(test_kat_768);
     RUN_TEST(test_kat_1024);

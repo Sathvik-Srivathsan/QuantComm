@@ -127,8 +127,12 @@ int qc_kem_keypair(qc_kem_level level,
         return QC_KEM_BAD_LEVEL;
     }
     /* Derandomized keygen with PCT off and no custom allocator cannot
-     * fail on caller input; any nonzero return is a backend fault. */
-    return rc == 0 ? QC_KEM_OK : QC_KEM_INTERNAL;
+     * fail on caller input; any nonzero return is a backend fault.
+     * Routed through the shared mapping so there is exactly ONE place
+     * where a backend code becomes a QC_KEM_* value. With PCT off this
+     * build never sees MLK_ERR_PCT_FAIL, but the mapping is what makes
+     * that safe rather than lucky. */
+    return qc_kem_map_backend_rc(rc);
 }
 
 int qc_kem_encaps(qc_kem_level level,
@@ -160,7 +164,7 @@ int qc_kem_encaps(qc_kem_level level,
     if (rc == MLK_ERR_INVALID_PK) {
         return QC_KEM_BAD_KEY;
     }
-    return QC_KEM_INTERNAL;
+    return qc_kem_map_backend_rc(rc);
 }
 
 int qc_kem_decaps(qc_kem_level level,
@@ -190,5 +194,36 @@ int qc_kem_decaps(qc_kem_level level,
     if (rc == MLK_ERR_INVALID_SK) {
         return QC_KEM_BAD_KEY;
     }
-    return QC_KEM_INTERNAL;
+    return qc_kem_map_backend_rc(rc);
+}
+
+/* Backend-rc -> QC_KEM_* translation, single source of truth.
+ *
+ * mlkem-native v2.0.0 split the legacy MLK_ERR_FAIL into distinct codes.
+ * Pin the boundary so a future backend change cannot silently widen
+ * BAD_KEY:
+ *  - INVALID_PK / INVALID_SK are peer/caller key events -> BAD_KEY.
+ *  - PCT_FAIL is the KEYGEN proof-correctness-test failure (raised only
+ *    when MLK_CONFIG_KEYGEN_PCT is enabled) — an internal fault, not a
+ *    key event. It must not be reachable as BAD_KEY.
+ *  - Anything else (FAIL, OUT_OF_MEMORY, RNG_FAIL, future codes) is an
+ *    internal fault -> INTERNAL by default, never BAD_KEY.
+ *
+ * Callers apply INVALID_PK (encaps) / INVALID_SK (decaps) first because
+ * those carry the peer-event meaning; everything else lands here. */
+int qc_kem_map_backend_rc(int backend_rc) {
+    switch (backend_rc) {
+    case 0:
+        return QC_KEM_OK;
+    case MLK_ERR_INVALID_PK:
+    case MLK_ERR_INVALID_SK:
+        return QC_KEM_BAD_KEY;
+    default:
+        /* PCT_FAIL (keygen proof-correctness-test), legacy MLK_ERR_FAIL,
+         * OUT_OF_MEMORY, RNG_FAIL and any future backend code land here:
+         * internal faults, NEVER success and NEVER BAD_KEY. A PCT failure
+         * reported as OK would hand the caller unusable keys with a success
+         * verdict - the exact defect this function exists to prevent. */
+        return QC_KEM_INTERNAL;
+    }
 }

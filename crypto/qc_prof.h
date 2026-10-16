@@ -22,6 +22,17 @@
  * a dedicated measurement TU, and - critically - a machine that can build
  * and RUN it, which this host currently cannot.
  *
+ * TWO MORE NAMED DEFERRALS (B-51.3 metric families not built here):
+ *   - FLASH PER TRACK: linked-binary size per track, via linker-map diff
+ *     against a no-crypto baseline. Owner: B-62 (the rig; size is a target
+ *     measurement, not a host one). Needs a baseline link target first.
+ *   - PERF-EVENT CYCLES: B-51.3 names perf-event cycles as primary with
+ *     rdtsc-with-fence as the fallback. This build uses the rdtsc path and
+ *     records `cycles_source: "rdtsc-fenced"` per dataset so the substitution
+ *     is visible in the data rather than assumed. Owner: B-60 (target).
+ * Both are recorded rather than silently absent; neither is safe to fake
+ * with zeros or a host stand-in.
+ *
  * Why C-side at all: B-51.1 requires measurements taken THROUGH the
  * B-10/B-11/B-12 adapter entry points, so the number must come from the
  * same process that runs the primitive. Timing across a subprocess
