@@ -9,8 +9,9 @@ import pytest
 
 from analysis.h5_gate import (MAPE_THRESHOLD, RESOLUTION_MULTIPLE, FloorRegistration,
                               H5Error, h5_gate, tail_preserved)
-from analysis.reproduce import (CLOSURE_FIELDS, ReproduceError, assemble_release,
-                                closure, scan_no_decision, verify_release)
+from analysis.reproduce import (CLOSURE_FIELDS, VERDICT_TOKENS, ReproduceError,
+                                assemble_release, closure, scan_no_decision,
+                                verify_release)
 
 
 def _floor(floor=1.0, res=0.1, at=100):
@@ -222,22 +223,47 @@ def test_rerun_must_match_bit_identically():
 
 # ---- no-decision scan ----
 def test_scan_is_clean_on_real_source():
+    """The scan runs over EXECUTABLE CODE, so this needs no hand-excision.
+
+    It used to scan raw text and then delete the hits by hand
+    (`hits = [t for t in hits if t not in ("decision", "verdict")]`), because
+    the package's own prohibition docstrings -- "Supplies NUMBERS, never
+    verdicts" -- tripped the token search. An assertion whose input has been
+    filtered until it passes cannot distinguish "the property holds" from
+    "the scanner is sweeping up prose". Now a docstring/comment is stripped
+    before the search, so an empty result MEANS the property.
+    """
     for f in ("analysis/stats.py", "analysis/h5_gate.py",
               "analysis/reproduce.py"):
         text = (Path(__file__).resolve().parents[2] / f).read_text()
-        # reproduce.py legitimately NAMES the tokens it scans for (that
-        # is the token list itself); those lines are not decision logic.
         hits = scan_no_decision(text)
-        # The word "verdict"/"decision" appears legitimately in this
-        # package's PROHIBITION docstrings ("numbers only, never
-        # verdicts"), which is the opposite of a decision branch.
-        hits = [t for t in hits if t not in ("decision", "verdict")]
-        # reproduce.py legitimately NAMES the tokens it scans for; that
-        # tuple is the scanner's vocabulary, not decision logic.
-        if "VERDICT_TOKENS" in text:
-            vocab = text.split("VERDICT_TOKENS =")[1].split(")")[0]
-            hits = [t for t in hits if t not in vocab]
+        # reproduce.py legitimately NAMES the tokens it scans for; that tuple
+        # is the scanner's vocabulary, not decision logic. This is the ONLY
+        # remaining excision, and it is structural (the scanner's own data),
+        # not a pass-by-pass filter over prose.
+        if f.endswith("reproduce.py"):
+            assert set(hits) <= set(VERDICT_TOKENS), hits
+            continue
         assert hits == [], "%s: %s" % (f, hits)
+
+
+def test_scan_ignores_prose():
+    """A docstring or comment must NOT be a hit. Prose is not a branch."""
+    assert scan_no_decision('"""never verdicts, no decision here."""\n') == []
+    assert scan_no_decision('def f():\n    """never verdicts."""\n') == []
+    assert scan_no_decision("x = 1  # final_call: go\n") == []
+    assert scan_no_decision('def f():\n    """line one\n'
+                            '    verdict here\n    """\n    return 1\n') == []
+
+
+def test_scan_still_sees_string_literals():
+    """A waiver hides in a literal, so literals are NOT stripped.
+
+    A sibling scan once stripped ALL strings and was blind to exactly this
+    (phase5-detailed.md B-50.5); keeping literals is the recorded lesson.
+    """
+    assert scan_no_decision('FLAG = "--force-green"\naccept = True\n') != []
+    assert scan_no_decision('D = {"a": "h1_verdict"}\n') != []
 
 
 def test_scan_fires_on_a_planted_verdict():
@@ -246,4 +272,10 @@ def test_scan_fires_on_a_planted_verdict():
 
 
 def test_scan_fires_on_a_planted_decision():
-    assert scan_no_decision("# final_call: go") != []
+    """Positive control on a real branch, not a comment.
+
+    This used to plant the token in a COMMENT, so it passed for a reason
+    unrelated to the property (comments are now stripped).
+    """
+    assert scan_no_decision('if mode == "decision":\n    pass\n') != []
+    assert scan_no_decision("# final_call: go") == [], "comments are prose"

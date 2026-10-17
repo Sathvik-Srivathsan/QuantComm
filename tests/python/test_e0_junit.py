@@ -36,8 +36,8 @@ def _write(tmp_path, cases):
 
 def test_pass_and_fail_elements(tmp_path):
     p = _write(tmp_path, [
-        '<testcase name="c_sha256" classname="c" time="0.01"/>\n',
-        '<testcase name="c_kem" classname="c" time="0.02">'
+        '<testcase name="c_sha256" classname="c" time="0.01" status="run"/>\n',
+        '<testcase name="c_kem" classname="c" time="0.02" status="run">'
         '<failure message="boom">detail</failure></testcase>\n',
     ])
     assert gate.parse_junit(p, ("c_sha256", "c_kem")) == {
@@ -46,16 +46,24 @@ def test_pass_and_fail_elements(tmp_path):
 
 def test_skipped_is_not_a_pass(tmp_path):
     """A skipped gated test must read as NOT passing. Counting it as a pass
-    is precisely the vacuous pass B-50.5 forbids."""
+    is precisely the vacuous pass B-50.5 forbids.
+
+    The case must carry status="run" so the <skipped/> CHILD is the only
+    thing that can make it not-a-pass. With status="notrun" the status test
+    refuses it first and this test would stay green even if skip detection
+    were deleted entirely (verified by mutation).
+    """
     p = _write(tmp_path, [
-        '<testcase name="c_dsa" classname="c" time="0"><skipped/></testcase>\n',
+        '<testcase name="c_dsa" classname="c" time="0" status="run"><skipped/></testcase>\n',
     ])
     assert gate.parse_junit(p, ("c_dsa",)) == {"c_dsa": False}
+    # and the case view keeps the flag that caused the refusal
+    assert gate.parse_junit_cases(p)["c_dsa"]["skipped"] is True
 
 
 def test_error_element_is_not_a_pass(tmp_path):
     p = _write(tmp_path, [
-        '<testcase name="c_rng" classname="c" time="0">'
+        '<testcase name="c_rng" classname="c" time="0" status="run">'
         '<error message="crash"/></testcase>\n',
     ])
     assert gate.parse_junit(p, ("c_rng",)) == {"c_rng": False}
@@ -63,7 +71,7 @@ def test_error_element_is_not_a_pass(tmp_path):
 
 def test_missing_element_raises_rather_than_assuming_pass(tmp_path):
     p = _write(tmp_path, [
-        '<testcase name="c_sha256" classname="c" time="0.01"/>\n',
+        '<testcase name="c_sha256" classname="c" time="0.01" status="run"/>\n',
     ])
     try:
         gate.parse_junit(p, ("c_sha256", "c_absent"))
@@ -85,9 +93,15 @@ def test_unreadable_report_raises(tmp_path):
 
 
 def test_results_are_filtered_to_the_requested_names(tmp_path):
-    p = _write(tmp_path, [
-        '<testcase name="c_sha256" classname="c" time="0"/>\n',
-        '<testcase name="c_extra" classname="c" time="0"/>\n',
-    ])
+    # Own document: both cases pass, so the suite must declare
+    # failures="0". Reusing HEAD (which declares failures="1") would be
+    # an inconsistent fixture -- the gate now refuses those.
+    p = tmp_path / "r.xml"
+    p.write_text(
+        '<testsuite name="ctest" tests="2" failures="0" errors="0" '
+        'skipped="0" disabled="0" time="0">'
+        '<testcase name="c_sha256" classname="c" time="0" status="run"/>'
+        '<testcase name="c_extra" classname="c" time="0" status="run"/>'
+        '</testsuite>\n', encoding="utf-8")
     out = gate.parse_junit(p, ("c_sha256",))
     assert out == {"c_sha256": True}

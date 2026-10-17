@@ -16,10 +16,15 @@ B-54.3 rules honoured here:
 
 import hashlib
 import random
+import re
 
 N_RESAMPLES = 10000
 CI_LEVEL = 0.95
 FWER = 0.05
+
+# An E0 gate id is "e0-" + 16 hex (qcsim.gate.mint_gate_id). Duplicated as a
+# shape check rather than imported: analysis/ must not depend on sim/.
+GATE_ID_RE = re.compile(r"^e0-[0-9a-f]{16}$")
 
 
 class StatsError(Exception):
@@ -55,6 +60,23 @@ def pair(samples):
                                 % (sysname, missing))
         if problems:
             raise StatsError("UNPAIRED input: " + "; ".join(problems))
+        # Trace completeness is not enough: paired_diffs intersects the SEED
+        # sets per trace, so a system rated on fewer seeds was silently
+        # dropped from the pairing (N, CI and effect size all computed on a
+        # subset with no signal). The module contract is "never a silent
+        # drop", so refuse an unequal seed set by name.
+        seed_problems = []
+        for tr in sorted(full):
+            sets = {name: set(grouped[name][tr]) for name in sorted(grouped)}
+            common = set.intersection(*sets.values())
+            for name in sorted(sets):
+                extra = sorted(sets[name] - common)
+                if extra:
+                    seed_problems.append(
+                        "%r trace %r has unpaired seed(s) %s"
+                        % (name, tr, extra))
+        if seed_problems:
+            raise StatsError("UNPAIRED seeds: " + "; ".join(seed_problems))
     return grouped
 
 
@@ -166,13 +188,31 @@ def holm_bonferroni(p_values, family):
     """
     if not family:
         raise StatsError("empty family: Holm-Bonferroni undefined")
+    # A missing/None p-value used to raise a raw KeyError/TypeError out of the
+    # sort key, breaking this module's "the ONLY exception raised is
+    # StatsError" contract while the `if p is None` branch below was
+    # unreachable. Validate first, then sort.
+    for c in family:
+        if c not in p_values:
+            raise StatsError("family member %r has no p-value" % (c,))
+        p = p_values[c]
+        if p is not None and (isinstance(p, bool)
+                              or not isinstance(p, (int, float))):
+            raise StatsError("p-value for %r is %r, not a number or None"
+                             % (c, p))
     m = len(family)
-    ordered = sorted(family, key=lambda c: p_values[c])
+    ordered = sorted(family,
+                     key=lambda c: (p_values[c] is None,
+                                    p_values[c] if p_values[c] is not None
+                                    else 0.0))
     out = {}
     running = 0.0
     for i, c in enumerate(ordered):
         p = p_values[c]
         if p is None:
+            # Not computable (e.g. too few samples). It is still part of the
+            # family count m, which is the point of counting claims: an
+            # uncomputable comparison must not silently shrink the family.
             out[c] = None
             continue
         running = max(running, min(1.0, (m - i) * p))
@@ -215,10 +255,15 @@ def known_ci_vector(diffs, seed, n=N_RESAMPLES):
 def gate_contract(n_declared, n_observed, vector_records, manifest=None):
     """B-54.6 gate: stated N, 100% deterministic, per-vector JSONL AND
     manifest. All four are required; none may be a placeholder."""
-    if n_declared is None or n_declared <= 0:
-        raise StatsError("stated N missing or non-positive")
+    if isinstance(n_declared, bool) or isinstance(n_observed, bool) \
+            or not isinstance(n_declared, int) \
+            or not isinstance(n_observed, int):
+        raise StatsError("stated N and observed N must be ints, got %r/%r"
+                         % (n_declared, n_observed))
+    if n_declared <= 0:
+        raise StatsError("stated N must be positive")
     if n_observed != n_declared:
-        raise StatsError("declared N=%r but produced %d"
+        raise StatsError("stated N=%r but produced %d"
                          % (n_declared, n_observed))
     if vector_records == "pending-harness":
         raise StatsError("per-vector JSONL is pending-harness; the gate "
@@ -233,6 +278,21 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
                          % (vector_records, type(vector_records).__name__))
     if not vector_records:
         raise StatsError("per-vector record list empty")
+    from .vector_schema import SchemaError, validate_set
+    try:
+        n_records = validate_set(vector_records, "per-vector")
+    except SchemaError as exc:
+        raise StatsError("per-vector records invalid: %s" % exc)
+    if n_records != n_declared:
+        raise StatsError("stated N=%d but %d per-vector records"
+                         % (n_declared, n_records))
+    # Schema-valid is not gate-valid. `passed` and the per-row gate provenance
+    # are part of the record for a reason; validating only the SHAPE let a
+    # record set in which 100% of vectors failed publish as manifest_ok.
+    failed = [r["vector_id"] for r in vector_records if r["passed"] is not True]
+    if failed:
+        raise StatsError("per-vector record(s) did not pass: %s"
+                         % (failed[:5],))
     if manifest is None:
         raise StatsError("manifest absent: B-54.6 requires JSONL AND "
                          "manifest")
@@ -240,12 +300,63 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
         raise StatsError("manifest must be a non-empty mapping")
     for field in ("gate_preflight", "model_pin", "code_hash",
                   "assumption_log_version"):
-        if not manifest.get(field):
-            raise StatsError("manifest missing required field %r" % field)
+        v = manifest.get(field)
+        if not isinstance(v, str) or not v.strip():
+            raise StatsError("manifest field %r must be a non-empty "
+                             "string, got %r" % (field, v))
+        # A value with leading/trailing whitespace reaches a path component
+        # and a log line in other contexts; here it silently defeated the
+        # sentinel comparison below, so "not-required " was accepted as a
+        # VERIFIED gate. Refuse the padded form outright.
+        if v != v.strip():
+            raise StatsError("manifest field %r has surrounding whitespace "
+                             "(%r); values are compared exactly"
+                             % (field, v))
+    # "not-required" is the runner's own sentinel for "the E0 preflight never
+    # ran" (sim/qcsim/runner.py). Accepting it here meant a run that skipped
+    # the gate was indistinguishable from a verified one. Compare on a
+    # normalised form as well, so casing/padding cannot bypass the sentinel
+    # even if a future producer changes how it spells it.
+    if manifest["gate_preflight"].strip().lower() == "not-required":
+        raise StatsError("gate_preflight is 'not-required': the E0 gate was "
+                         "never consulted for this run")
+    # ...but refusing ONE sentinel is not verification. The gate id has a
+    # checkable shape (qcsim.gate: "e0-" + 16 hex) and is recomputable, yet
+    # any other string -- "verified", "yolo", a well-formed fake -- was
+    # accepted, so a run with no gate at all could be relabelled and pass.
+    # Shape-check here; recomputation is qcsim.gate.verify_gate_id's job (this
+    # module must not import the sim layer), and preflight is what actually
+    # walks the record.
+    claimed = manifest["gate_preflight"]
+    if not GATE_ID_RE.match(claimed):
+        raise StatsError("manifest gate_preflight %r is not an E0 gate id "
+                         "(expected 'e0-<16 hex>'); a value that cannot name a "
+                         "gate is not evidence that one passed" % (claimed,))
+    # Provenance binding: the retained rows must name the same gate the
+    # manifest claims. Without this the JSONL and the manifest were two
+    # unrelated objects that the gate only checked EXIST.
+    mismatched = [r["vector_id"] for r in vector_records
+                  if r["gate_id"] != claimed]
+    if mismatched:
+        raise StatsError("per-vector record(s) %s carry gate_id != "
+                         "manifest gate_preflight %r"
+                         % (mismatched[:5], claimed))
+    unbound = [r["vector_id"] for r in vector_records
+               if not r["gate_commit"]]
+    if unbound:
+        raise StatsError("per-vector record(s) %s carry no gate_commit; a "
+                         "result without provenance is not a result"
+                         % (unbound[:5],))
+    unknown = sorted(set(manifest) - {"gate_preflight", "model_pin",
+                                      "code_hash",
+                                      "assumption_log_version"}, key=str)
+    if unknown:
+        raise StatsError("manifest has unknown key(s) %s" % unknown)
     return {"stated_n": n_declared, "observed_n": n_observed,
             "retention_form": "per-vector",
-            "vector_records": len(vector_records),
-            "manifest_ok": True, "deterministic": True}
+            "vector_records": n_records,
+            "manifest_ok": True,
+            "deterministic": True}
 
 
 def determinism_hash(payloads):

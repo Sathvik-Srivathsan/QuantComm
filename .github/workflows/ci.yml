@@ -63,6 +63,17 @@ jobs:
           cmake --build build --target srv_crypto -j2
       - name: test
         run: python -m pytest tests/python -q
+      # Mutation adequacy (the anti-flimsiness gate). A green suite proves
+      # the code passes the tests; it does NOT prove the tests would notice
+      # if the code stopped honouring a guarantee. Three separate defects on
+      # this chunk (per-row provenance never emitted, `status="fail"` read as
+      # not-executed, a <skipped/> child counted as executed) each left the
+      # whole suite GREEN. So each guarantee now has a planted single-line
+      # wrongness, and a SURVIVOR fails this job: a named guarantee with no
+      # test that can fail for it is not a guarantee. Runs here (not the
+      # c job) because it drives pytest and needs no cmake.
+      - name: mutation adequacy
+        run: python tools/mutate_check.py
   # E0 correctness gate (plan B-50.4). Required status: a red gate blocks
   # every E-campaign, sim campaign, target measurement and protocol
   # integration. No waiver mechanism exists by design — there is no

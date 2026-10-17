@@ -93,20 +93,65 @@ def test_empty_results_are_a_failure_not_a_vacuous_pass():
     assert (passed, total) == (0, 0)
 
 
+def test_only_a_real_bool_true_is_a_pass():
+    """Truthiness counted "fail", -1, 1.0 and [0] as passes (M5).
+
+    Without this, restoring `if v` in verdict_from left every test green: the
+    other verdict tests only ever pass real bools, so the identity rule had no
+    coverage at all.
+    """
+    for value in ("fail", -1, 1.0, [0], "pass", 1, ["x"], object()):
+        verdict, passed, total = gate.verdict_from({"c_x": value})
+        assert verdict == "fail", "%r must not be a pass" % (value,)
+        assert passed == 0, "%r counted as a pass" % (value,)
+        assert total == 1
+    # the one value that IS a pass
+    assert gate.verdict_from({"c_x": True}) == ("pass", 1, 1)
+    # and False is a failure, not a missing entry
+    assert gate.verdict_from({"c_x": False}) == ("fail", 0, 1)
+
+
 def test_every_gated_test_is_reported_exactly_once():
-    """A duplicated or dropped verdict must not slip through the count."""
-    res = _all_pass()
-    assert len(res) == len(set(res)), "duplicate test in results"
+    """Every test in the E0 set reaches the count exactly once.
+
+    The previous version compared a comprehension against itself
+    (`total == len({t for ps in gate.E0_SET for t in ps.tests})` after
+    `total = len(res)` with `res` built by the same comprehension), so it was
+    true for ANY verdict function -- a total verdict reversal left it green.
+
+    Build the expected set independently from the set definitions and drive
+    real results through the count, then prove the count reacts.
+    """
+    expected = set()
+    for ps in gate.E0_SET:
+        for t in ps.tests:
+            expected.add(t)
+    assert len(expected) == sum(len(ps.tests) for ps in gate.E0_SET), \
+        "a test name appears in two E0 set entries; the count would double it"
+
+    res = {n: True for n in expected}
     verdict, passed, total = gate.verdict_from(res)
-    assert total == len({t for ps in gate.E0_SET for t in ps.tests})
+    assert (verdict, passed, total) == ("pass", len(expected), len(expected))
+
+    # A DROPPED verdict is not detectable here -- verdict_from only sees the
+    # mapping it is handed. Completeness against the E0 set is parse_junit's
+    # contract, so assert it there instead; what this test CAN pin is that a
+    # non-passing entry moves the verdict.
+    res[next(iter(expected))] = False
+    verdict, passed, total = gate.verdict_from(res)
+    assert total == len(expected)
+    assert passed == len(expected) - 1
+    assert verdict == "fail"
 
 
 def test_cross_check_failure_is_reported_not_silent():
     res = _all_pass()
     res["c_xcheck"] = False
-    rate = "100%" if res["c_xcheck"] else "FAIL"
-    assert rate == "FAIL"
-    assert gate.verdict_from(res)[0] == "fail"
+    # Drive the verdict; do not re-implement the production ternary inline
+    # (asserting on your own copy of the expression proves nothing).
+    verdict, passed, total = gate.verdict_from(res)
+    assert verdict == "fail"
+    assert passed == total - 1
 
 
 def test_rng_health_verdict_is_tracked_per_source():
@@ -182,12 +227,29 @@ def _executable_code(text: str, is_python: bool) -> str:
     except SyntaxError:
         pass                      # let the token pass report the problem
     kept = []
+    prev = None
     for tok in tokenize.generate_tokens(io.StringIO(text).readline):
         if tok.type == tokenize.COMMENT:
             continue
         if tok.type == tokenize.STRING and tok.start[0] in doc_lines:
             continue
-        kept.append(tok.string)
+        # Attribute access must survive the join, or the scan is blind to the
+        # very mechanism it names: a real "@pytest.mark.skip" tokenizes to
+        # "@ pytest . mark . skip", so joining with a bare space made the
+        # forbidden literal "pytest.mark.skip" unmatchable -- only a string
+        # literal (which keeps its dots) was ever detected, which is exactly
+        # what the positive control planted. Emit dotted chains with no space
+        # around the dot, and keep a newline after a leading "@" so a
+        # decorator cannot be forged by two unrelated statements.
+        if tok.string == "." and kept and prev not in (None, ".", "@"):
+            kept[-1] = kept[-1] + "."
+            prev = tok.string
+            continue
+        if prev == ".":
+            kept[-1] = kept[-1] + tok.string
+        else:
+            kept.append(tok.string)
+        prev = tok.string
     return " ".join(kept)
 
 
@@ -219,6 +281,18 @@ def test_no_waiver_scan_has_a_working_positive_control():
     # A string constant IS a mechanism - the earlier scan missed these.
     assert "pytest.mark.skip" in detect(
         "MARK = 'pytest.mark.skip'\n", True)
+    # ...and so is the REAL call syntax, which the token join used to hide
+    # ("@ pytest . mark . skip" never contains the contiguous literal). This
+    # is the mechanism the token was added to catch.
+    assert "pytest.mark.skip" in detect(
+        "@pytest.mark.skip(reason='x')\ndef test_a():\n    pass\n", True)
+    assert "pytest.mark.skip" in detect(
+        "import pytest\npytestmark = pytest.mark.skip\n", True)
+    assert "pytest.mark.skip" in detect(
+        "@pytest.mark.skipif(True, reason='x')\ndef test_b():\n    pass\n",
+        True)
+    assert "pytest.mark.skip" in detect(
+        "pytest.mark.skip('x')\n", True)
     # YAML.
     assert detect("    continue-on-error: true\n", False) == [
         "continue-on-error"]
@@ -233,10 +307,22 @@ def test_no_waiver_scan_has_a_working_positive_control():
 
 def _write_manifest(build: Path, **kw):
     d = build / "e0"
-    d.mkdir(parents=True, exist_ok=True)
     rec = {"commit": "aaa", "verdict": "pass", "timestamp": "T",
-           "gate_id": gate.mint_gate_id("aaa", "pass", "T")}
+           "gate_id": gate.mint_gate_id("aaa", "pass", "T"),
+           "passed_tests": 12, "total_tests": 12}
     rec.update(kw)
+    # preflight now verifies provenance: the manifest must carry a digest and
+    # the artifact it names must match it, so a hand-written manifest needs a
+    # real JSONL beside it (unless the caller overrides the digest). It also
+    # binds the COUNT: total_tests must equal the rows retained, so the
+    # fixture writes as many rows as it claims (12) -- a one-row artifact
+    # beside a 12/12 claim is now refused.
+    d.mkdir(parents=True, exist_ok=True)
+    jsonl = d / "e0-gate.jsonl"
+    total = rec.get("total_tests", 12)
+    jsonl.write_text("".join('{"schema_version": 1}\n' for _ in range(total)),
+                     encoding="utf-8")
+    rec.setdefault("records_sha256", gate.records_sha256(jsonl))
     (d / "latest-gate.json").write_text(json.dumps(rec), encoding="utf-8")
     return rec
 

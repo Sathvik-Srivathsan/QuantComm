@@ -37,6 +37,11 @@ def _green_gate(build: Path, monkeypatch, head="head-sha"):
     rec = {"commit": head, "verdict": "pass", "timestamp": "T",
            "gate_id": gate_mod.mint_gate_id(head, "pass", "T"),
            "total_tests": 1, "passed_tests": 1}
+    # preflight now verifies the manifest against the artifact it names, so a
+    # green record needs a real JSONL whose digest the manifest carries.
+    jsonl = d / "e0-gate.jsonl"
+    jsonl.write_text('{"schema_version": 1}\n', encoding="utf-8")
+    rec["records_sha256"] = gate_mod._records_sha256(jsonl)
     (d / "latest-gate.json").write_text(json.dumps(rec), encoding="utf-8")
     monkeypatch.setattr(gate_mod, "git_commit", lambda repo: head)
     return rec["gate_id"]

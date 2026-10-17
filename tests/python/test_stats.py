@@ -66,10 +66,23 @@ def test_paired_diffs_refuse_disjoint_systems():
 
 # ---- bootstrap ----
 def test_bootstrap_ci_brackets_the_mean():
-    d = paired_diffs(pair(_paired()), "S5", "S1")
-    lo, hi, seed = bootstrap_ci(d, n=2000, seed=11)
-    assert lo <= 2.0 <= hi
+    """A degenerate sample makes this assertion powerless.
+
+    `_paired` yields all-2.0 diffs, so `lo <= 2.0 <= hi` held for ANY interval
+    -- replacing the return with (min-1000, max+1000) left it green. Use a
+    spread sample so the interval has to actually bracket the mean.
+    """
+    sample = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+    lo, hi, seed = bootstrap_ci(sample, n=2000, seed=11)
+    mean = sum(sample) / len(sample)
+    assert lo <= mean <= hi
     assert seed == 11
+    # the interval must be narrower than the sample range, or "brackets" is
+    # satisfied by a useless [-inf, +inf]
+    assert (hi - lo) < (max(sample) - min(sample))
+    # and it must tighten with more resamples (a broken percentile does not)
+    lo2, hi2, _ = bootstrap_ci(sample, n=20000, seed=11)
+    assert (hi2 - lo2) <= (hi - lo) + 1e-9
 
 
 def test_bootstrap_is_identical_on_replay():
@@ -84,7 +97,11 @@ def test_different_seeds_differ_or_are_close_but_not_forced():
     d = paired_diffs(pair(_paired()), "S5", "S1")
     a = bootstrap_ci(d, n=1000, seed=1)
     b = bootstrap_ci(d, n=1000, seed=2)
-    assert a[2] != b[2], "seed must be recorded per run"
+    # The seed is recorded per run (tautologically true), AND the resample is
+    # actually driven by it -- asserting only the echoed seed proved nothing
+    # about the CI, which is what a reader of this test's name expects.
+    assert a[2] == 1 and b[2] == 2, "seed must be recorded per run"
+    assert a != b, "a different seed must produce a different resample"
 
 
 def test_bootstrap_uses_10000_and_95_by_default():
@@ -180,6 +197,43 @@ def test_holm_refuses_empty_family():
         holm_bonferroni({}, [])
 
 
+def test_holm_refuses_a_none_p_value_through_its_own_contract():
+    """MEDIUM: None used to escape as a raw TypeError/KeyError.
+
+    The sort key was p_values[c], so a None (or a family member with no
+    entry) raised before the `if p is None` branch -- which was therefore
+    dead -- and escaped this module's "the ONLY exception raised is
+    StatsError" contract. None is still ACCEPTED (an uncomputable comparison
+    stays in the family count), it just no longer crashes.
+    """
+    out = holm_bonferroni({"a": 0.01, "b": None}, ["a", "b"])
+    assert out["b"] is None
+    assert out["a"] == pytest.approx(0.02)   # m=2, not m=1: None still counts
+    with pytest.raises(StatsError, match="no p-value"):
+        holm_bonferroni({"a": 0.01}, ["a", "b"])
+    with pytest.raises(StatsError, match="not a number"):
+        holm_bonferroni({"a": True}, ["a"])
+
+
+def test_pair_refuses_an_unequal_seed_set():
+    """MEDIUM: paired_diffs silently intersected seeds.
+
+    pair() checked trace completeness only, so a system rated on fewer seeds
+    was silently dropped from the pairing and N/CI/effect size were computed
+    on a subset -- the exact "silent drop" the module contract forbids.
+    """
+    unbalanced = [{"system": "A", "trace": "t", "seed": 1, "value": 1.0},
+                  {"system": "A", "trace": "t", "seed": 2, "value": 2.0},
+                  {"system": "B", "trace": "t", "seed": 1, "value": 0.0}]
+    with pytest.raises(StatsError, match="UNPAIRED seeds"):
+        pair(unbalanced)
+    # Positive control: the balanced form still pairs, so the refusal is the
+    # seed set and not a blanket rejection.
+    balanced = [{"system": "A", "trace": "t", "seed": 1, "value": 1.0},
+                {"system": "B", "trace": "t", "seed": 1, "value": 0.0}]
+    assert paired_diffs(pair(balanced), "A", "B") == [1.0]
+
+
 def test_family_enumeration_is_the_product():
     comps = family_comparisons("H1", ["c1", "c2"], ["S1", "S2", "S3"],
                                ["energy", "latency"])
@@ -243,15 +297,22 @@ def test_known_bounds_fail_if_percentile_is_shifted():
 
 
 # ---- B-54.6 gate contract ----
+def _pv(i=0, passed=True, gate_id="e0-0123456789abcdef", gate_commit="c" * 40):
+    return {"schema_version": 1, "vector_id": "kat-%06d" % i,
+            "level": "ml-kem-768", "passed": passed,
+            "input_sha256": None, "output_sha256": None,
+            "gate_commit": gate_commit, "gate_id": gate_id}
+
+
 def _manifest():
-    return {"gate_preflight": "e0-abc123", "model_pin": "m1",
+    return {"gate_preflight": "e0-0123456789abcdef", "model_pin": "m1",
             "code_hash": "c" * 16, "assumption_log_version": "b43-device-2"}
 
 
 def test_gate_accepts_matching_n_with_real_vector_records():
     from analysis.stats import gate_contract
-    g = gate_contract(6, 6, [{"v": 1}, {"v": 2}], manifest=_manifest())
-    assert g["stated_n"] == 6 and g["vector_records"] == 2
+    g = gate_contract(2, 2, [_pv(0), _pv(1)], manifest=_manifest())
+    assert g["stated_n"] == 2 and g["vector_records"] == 2
     assert g["manifest_ok"] is True and g["deterministic"] is True
 
 
@@ -259,15 +320,18 @@ def test_gate_refuses_absent_manifest():
     """B-54.6 requires JSONL AND manifest."""
     from analysis.stats import gate_contract
     with pytest.raises(StatsError) as e:
-        gate_contract(6, 6, [{"v": 1}])
+        gate_contract(1, 1, [_pv(0)])
     assert "manifest" in str(e.value)
 
 
 def test_gate_refuses_empty_or_non_mapping_manifest():
     from analysis.stats import gate_contract
+    # Valid records, so the ONLY thing that can refuse is the manifest: with
+    # an invalid record the record check fired first and this test passed even
+    # if the non-mapping-manifest check were deleted (an ordering tautology).
     for bad in ({}, "not-a-dict", []):
-        with pytest.raises(StatsError):
-            gate_contract(6, 6, [{"v": 1}], manifest=bad)
+        with pytest.raises(StatsError, match="manifest must be a non-empty"):
+            gate_contract(1, 1, [_pv(0)], manifest=bad)
 
 
 def test_gate_refuses_manifest_missing_a_required_field():
@@ -277,14 +341,14 @@ def test_gate_refuses_manifest_missing_a_required_field():
         m = _manifest()
         del m[field]
         with pytest.raises(StatsError) as e:
-            gate_contract(6, 6, [{"v": 1}], manifest=m)
+            gate_contract(1, 1, [_pv(0)], manifest=m)
         assert field in str(e.value), field
 
 
 def test_gate_refuses_n_mismatch():
     from analysis.stats import gate_contract
     with pytest.raises(StatsError) as e:
-        gate_contract(6, 5, [{"v": 1}], manifest=_manifest())
+        gate_contract(2, 1, [_pv(0)], manifest=_manifest())
     assert "N=" in str(e.value)
 
 
@@ -300,13 +364,16 @@ def test_gate_refuses_missing_or_empty_n():
     from analysis.stats import gate_contract
     for n in (None, 0, -1):
         with pytest.raises(StatsError):
-            gate_contract(n, 1, [{"v": 1}], manifest=_manifest())
+            gate_contract(n, 1, [_pv(0)], manifest=_manifest())
+    for n in (None, 0, -1):
+        with pytest.raises(StatsError):
+            gate_contract(1, n, [_pv(0)], manifest=_manifest())
 
 
 def test_gate_refuses_empty_vector_records():
     from analysis.stats import gate_contract
     with pytest.raises(StatsError):
-        gate_contract(6, 6, [], manifest=_manifest())
+        gate_contract(1, 1, [], manifest=_manifest())
 
 
 def test_determinism_hash_is_stable_across_calls():
