@@ -26,6 +26,9 @@ Banned by construction: wall-clock reads, os.urandom outside the
 seeder, threads, unseeded random (import-time surface + grep CI gate
 + determinism self-test).
 """
+from .campaign import (CampaignError, CampaignManifest, Cell, ModelPinChanged,
+                       Registration, check_split, e5_cells,
+                       h3_comparator, register_e6, run_count)
 from .clock import SimClock
 from .control import ControlLoop
 from .device import DeviceModel
@@ -45,19 +48,29 @@ from .validity import (check_comparison, check_oracle_bound,
 
 __all__ = [
     "ControlLoop",
+    "CampaignError",
+    "CampaignManifest",
+    "Cell",
     "DeviceModel",
     "ExperimentRunner",
     "GateRefusal",
+    "ModelPinChanged",
+    "Registration",
     "NetworkModel",
     "RNGStreams",
     "SimClock",
     "baseline_systems",
     "check_comparison",
+    "check_split",
     "check_oracle_bound",
     "check_sim_tag",
+    "e5_cells",
     "generate_traces",
+    "h3_comparator",
     "h3_input_record",
     "parse_scenario",
     "play_scenario",
+    "register_e6",
+    "run_count",
     "select_anchor",
 ]
