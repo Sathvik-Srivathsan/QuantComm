@@ -223,8 +223,16 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
     if vector_records == "pending-harness":
         raise StatsError("per-vector JSONL is pending-harness; the gate "
                          "cannot pass on a placeholder")
+    if vector_records == "per-test":
+        raise StatsError("per-test retention satisfies G5 but NOT the "
+                         "per-vector accept boxes (:573/:687/:807"
+                         "/:913); the per-vector form is required")
+    if not isinstance(vector_records, list):
+        raise StatsError("unknown retention form %r (%s); expected a "
+                         "per-vector record list"
+                         % (vector_records, type(vector_records).__name__))
     if not vector_records:
-        raise StatsError("per-vector JSONL empty")
+        raise StatsError("per-vector record list empty")
     if manifest is None:
         raise StatsError("manifest absent: B-54.6 requires JSONL AND "
                          "manifest")
@@ -235,6 +243,7 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
         if not manifest.get(field):
             raise StatsError("manifest missing required field %r" % field)
     return {"stated_n": n_declared, "observed_n": n_observed,
+            "retention_form": "per-vector",
             "vector_records": len(vector_records),
             "manifest_ok": True, "deterministic": True}
 
