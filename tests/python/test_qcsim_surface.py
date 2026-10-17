@@ -7,8 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sim"))
 
 import qcsim  # noqa: E402
 
-TWENTY_SEVEN = {
+THIRTY_THREE = {
+    "AttackError",
     "CampaignError",
+    "EpsilonRegistration",
+    "TOwncome",
     "CampaignManifest",
     "Cell",
     "ControlLoop",
@@ -21,6 +24,10 @@ TWENTY_SEVEN = {
     "RNGStreams",
     "SimClock",
     "baseline_systems",
+    "epsilon",
+    "excess_energy",
+    "excess_rate_J_per_h",
+    "h4_input",
     "check_comparison",
     "check_split",
     "check_oracle_bound",
@@ -36,13 +43,13 @@ TWENTY_SEVEN = {
     "select_anchor",
 }
 
-SUBMODULES = {"campaign", "clock", "control", "device", "gate", "network", "runner",
+SUBMODULES = {"attacks", "campaign", "clock", "control", "device", "gate", "network", "runner",
               "scenarios", "simtag", "streams", "systems", "traces",
               "validity"}
 
 
 def test_qcsim_surface_exact():
-    assert set(qcsim.__all__) == TWENTY_SEVEN
+    assert set(qcsim.__all__) == THIRTY_THREE
     for name in qcsim.__all__:
         assert callable(getattr(qcsim, name)), name
     public = {n for n in dir(qcsim) if not n.startswith("_")}

@@ -26,6 +26,8 @@ Banned by construction: wall-clock reads, os.urandom outside the
 seeder, threads, unseeded random (import-time surface + grep CI gate
 + determinism self-test).
 """
+from .attacks import (AttackError, EpsilonRegistration, TOwncome, epsilon,
+                     excess_energy, excess_rate_J_per_h, h4_input)
 from .campaign import (CampaignError, CampaignManifest, Cell, ModelPinChanged,
                        Registration, check_split, e5_cells,
                        h3_comparator, register_e6, run_count)
@@ -48,6 +50,8 @@ from .validity import (check_comparison, check_oracle_bound,
 
 __all__ = [
     "ControlLoop",
+    "AttackError",
+    "EpsilonRegistration",
     "CampaignError",
     "CampaignManifest",
     "Cell",
@@ -56,10 +60,15 @@ __all__ = [
     "GateRefusal",
     "ModelPinChanged",
     "Registration",
+    "TOwncome",
     "NetworkModel",
     "RNGStreams",
     "SimClock",
     "baseline_systems",
+    "epsilon",
+    "excess_energy",
+    "excess_rate_J_per_h",
+    "h4_input",
     "check_comparison",
     "check_split",
     "check_oracle_bound",
