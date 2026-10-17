@@ -243,6 +243,12 @@ def test_known_bounds_fail_if_percentile_is_shifted():
 
 
 # ---- B-54.6 gate contract ----
+def _pv(i=0, passed=True):
+    return {"schema_version": 1, "vector_id": "kat-%06d" % i,
+            "level": "ml-kem-768", "passed": passed,
+            "input_sha256": None, "output_sha256": None}
+
+
 def _manifest():
     return {"gate_preflight": "e0-abc123", "model_pin": "m1",
             "code_hash": "c" * 16, "assumption_log_version": "b43-device-2"}
@@ -250,8 +256,8 @@ def _manifest():
 
 def test_gate_accepts_matching_n_with_real_vector_records():
     from analysis.stats import gate_contract
-    g = gate_contract(6, 6, [{"v": 1}, {"v": 2}], manifest=_manifest())
-    assert g["stated_n"] == 6 and g["vector_records"] == 2
+    g = gate_contract(2, 2, [_pv(0), _pv(1)], manifest=_manifest())
+    assert g["stated_n"] == 2 and g["vector_records"] == 2
     assert g["manifest_ok"] is True and g["deterministic"] is True
 
 
@@ -259,7 +265,7 @@ def test_gate_refuses_absent_manifest():
     """B-54.6 requires JSONL AND manifest."""
     from analysis.stats import gate_contract
     with pytest.raises(StatsError) as e:
-        gate_contract(6, 6, [{"v": 1}])
+        gate_contract(1, 1, [_pv(0)])
     assert "manifest" in str(e.value)
 
 
@@ -277,14 +283,14 @@ def test_gate_refuses_manifest_missing_a_required_field():
         m = _manifest()
         del m[field]
         with pytest.raises(StatsError) as e:
-            gate_contract(6, 6, [{"v": 1}], manifest=m)
+            gate_contract(1, 1, [_pv(0)], manifest=m)
         assert field in str(e.value), field
 
 
 def test_gate_refuses_n_mismatch():
     from analysis.stats import gate_contract
     with pytest.raises(StatsError) as e:
-        gate_contract(6, 5, [{"v": 1}], manifest=_manifest())
+        gate_contract(2, 1, [_pv(0)], manifest=_manifest())
     assert "N=" in str(e.value)
 
 
@@ -300,13 +306,16 @@ def test_gate_refuses_missing_or_empty_n():
     from analysis.stats import gate_contract
     for n in (None, 0, -1):
         with pytest.raises(StatsError):
-            gate_contract(n, 1, [{"v": 1}], manifest=_manifest())
+            gate_contract(n, 1, [_pv(0)], manifest=_manifest())
+    for n in (None, 0, -1):
+        with pytest.raises(StatsError):
+            gate_contract(1, n, [_pv(0)], manifest=_manifest())
 
 
 def test_gate_refuses_empty_vector_records():
     from analysis.stats import gate_contract
     with pytest.raises(StatsError):
-        gate_contract(6, 6, [], manifest=_manifest())
+        gate_contract(1, 1, [], manifest=_manifest())
 
 
 def test_determinism_hash_is_stable_across_calls():

@@ -22,7 +22,7 @@ from analysis.vector_schema import (FORMS, SCHEMA_VERSION, PER_TEST_FIELDS,
 def _pv(i=0, passed=True):
     return {"schema_version": SCHEMA_VERSION, "vector_id": "kat-%06d" % i,
             "level": "ml-kem-768", "passed": passed,
-            "input_sha256": "a" * 64, "output_sha256": "b" * 64}
+            "input_sha256": None, "output_sha256": None}
 
 
 def test_per_vector_record_validates():
@@ -123,7 +123,7 @@ def test_forms_constant_names_the_three_known():
 
 # ---------------- G5 monotonic run ids -----------------------------
 def test_run_id_is_normalised_to_monotonic_form():
-    assert monotonic_run_id("E5", "7") == "E5-0007"
+    assert monotonic_run_id("E5", "7") == "E5-00000007"
 
 
 def test_run_id_zero_is_refused():

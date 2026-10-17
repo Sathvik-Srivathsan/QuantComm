@@ -215,10 +215,15 @@ def known_ci_vector(diffs, seed, n=N_RESAMPLES):
 def gate_contract(n_declared, n_observed, vector_records, manifest=None):
     """B-54.6 gate: stated N, 100% deterministic, per-vector JSONL AND
     manifest. All four are required; none may be a placeholder."""
-    if n_declared is None or n_declared <= 0:
-        raise StatsError("stated N missing or non-positive")
+    if isinstance(n_declared, bool) or isinstance(n_observed, bool) \
+            or not isinstance(n_declared, int) \
+            or not isinstance(n_observed, int):
+        raise StatsError("stated N and observed N must be ints, got %r/%r"
+                         % (n_declared, n_observed))
+    if n_declared <= 0:
+        raise StatsError("stated N must be positive")
     if n_observed != n_declared:
-        raise StatsError("declared N=%r but produced %d"
+        raise StatsError("stated N=%r but produced %d"
                          % (n_declared, n_observed))
     if vector_records == "pending-harness":
         raise StatsError("per-vector JSONL is pending-harness; the gate "
@@ -233,6 +238,14 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
                          % (vector_records, type(vector_records).__name__))
     if not vector_records:
         raise StatsError("per-vector record list empty")
+    from .vector_schema import SchemaError, validate_set
+    try:
+        n_records = validate_set(vector_records, "per-vector")
+    except SchemaError as exc:
+        raise StatsError("per-vector records invalid: %s" % exc)
+    if n_records != n_declared:
+        raise StatsError("stated N=%d but %d per-vector records"
+                         % (n_declared, n_records))
     if manifest is None:
         raise StatsError("manifest absent: B-54.6 requires JSONL AND "
                          "manifest")
@@ -240,12 +253,20 @@ def gate_contract(n_declared, n_observed, vector_records, manifest=None):
         raise StatsError("manifest must be a non-empty mapping")
     for field in ("gate_preflight", "model_pin", "code_hash",
                   "assumption_log_version"):
-        if not manifest.get(field):
-            raise StatsError("manifest missing required field %r" % field)
+        v = manifest.get(field)
+        if not isinstance(v, str) or not v.strip():
+            raise StatsError("manifest field %r must be a non-empty "
+                             "string, got %r" % (field, v))
+    unknown = sorted(set(manifest) - {"gate_preflight", "model_pin",
+                                      "code_hash",
+                                      "assumption_log_version"})
+    if unknown:
+        raise StatsError("manifest has unknown key(s) %s" % unknown)
     return {"stated_n": n_declared, "observed_n": n_observed,
             "retention_form": "per-vector",
-            "vector_records": len(vector_records),
-            "manifest_ok": True, "deterministic": True}
+            "vector_records": n_records,
+            "manifest_ok": True,
+            "deterministic": True}
 
 
 def determinism_hash(payloads):
